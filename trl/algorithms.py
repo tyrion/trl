@@ -1,9 +1,13 @@
+import logging
+
 import numpy as np
 from numpy.linalg import norm
 from pybrain.optimization import ExactNES
 
 from . import utils
 
+
+logger = logging.getLogger(__name__)
 
 
 class Algorithm:
@@ -76,24 +80,17 @@ class PBO(Algorithm):
 # 1. passarre oggetto custom come msg, con __str__ e usare un handler
 # 2.
 
-# class LoggingOptimizerMixin:
-#     prevX = prevY = None
-#
-#     def _notify(self):
-#         x, y = self.bestEvaluable, self.bestEvaluation
-#         if not (np.array_equal(x, self.prevX) and y == self.prevY):
-#             n = self.numLearningSteps
-#             #print('\n{:6} e({}) = {} '.format(n, x, y), end='')
-#             logger.info(_('{:3} e({}) = {} ', '{},{},{}', n, x, y))
-#             self.prevX, self.prevY = x, y
-#
-#     def _bestFound(self):
-#         return super()._bestFound()
-#
-#
-# class LoggingNES(LoggingOptimizerMixin, ExactNES):
-#     pass
-#
+
+class LoggingNES(ExactNES):
+    prev = None
+
+    def _notify(self):
+        b = self.bestEvaluation
+        if b != self.prev:
+            n = self.numLearningSteps
+            logger.info('%4s loss: %d', n, b)
+            self.prev = b
+
 
 class NESPBO(PBO):
 

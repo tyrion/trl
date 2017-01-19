@@ -52,7 +52,7 @@ class CurveFitQRegressor(regressor.Regressor):
 def init_env(seed):
     env = envs.LQG1D()
     seed = env.seed(seed)
-    print('Random seed: {}'.format(seed))
+    print('Random seed1: {}'.format(seed))
     env.reset()
     dataset = collect_episodes(env, n=100)
 
@@ -96,7 +96,6 @@ def setup_pbo():
     bo = build_nn()
     return algorithms.NESPBO(dataset, actions, q, bo, env.gamma, K=1,
                             batchSize=10, learningRate=0.01)
-    return pbo
 
 
 def setup_fqi():
@@ -106,17 +105,21 @@ def setup_fqi():
 
 if __name__ == '__main__':
     import argparse
+    import logging
+    import logging.config
     import random
+    import signal
     import time
     import timeit
-    import signal
+    import warnings
+
+    from gym.utils import seeding
 
     def handler(signum, frame):
         print('Received Interrupt. Terminating')
         raise SystemExit
 
     signal.signal(signal.SIGINT, handler)
-
 
     parser = argparse.ArgumentParser()
     parser.add_argument('algorithm', help='The algorithm to run',
@@ -126,10 +129,44 @@ if __name__ == '__main__':
     parser.add_argument('-b', '--budget', type=int, help='budget')
     parser.add_argument('-p', '--plot', help='plot results', action='store_true')
     parser.add_argument('-t', '--timeit', type=int, default=0)
-    parser.add_argument('--seed', type=int, help='specify a random seed.')
+    parser.add_argument('--seed1', type=int, help='specify a random seed.')
+    parser.add_argument('--seed2', type=int, help='seed numpy')
     args = parser.parse_args()
 
-    env, dataset = init_env(args.seed)
+    logging.config.dictConfig({
+        'version': 1,
+        'formatters': {
+            'default': {
+                'format': '%(levelname)s:%(name)s: %(message)s',
+            },
+        },
+        'handlers': {
+            'console': {
+                'class': 'logging.StreamHandler',
+                'level': logging.INFO,
+                'formatter': 'default',
+            },
+        },
+        'loggers': {
+            'trl': {
+                'level': logging.DEBUG,
+            },
+        },
+        'root': {
+            'level': logging.INFO,
+            'handlers': ['console'],
+        },
+
+    })
+
+    # pybrain is giving a lot of deprecation warnings
+    warnings.filterwarnings('ignore', module='pybrain')
+
+    seed = seeding._seed(args.seed2)
+    np.random.seed(seeding._int_list_from_bigint(seeding.hash_seed(seed)))
+
+    env, dataset = init_env(args.seed1)
+    print('Random seed2: {}'.format(seed))
 
     setup = locals()['setup_{}'.format(args.algorithm)]
     algorithm = setup()
@@ -141,6 +178,7 @@ if __name__ == '__main__':
     else:
         algorithm.run(args.n, args.budget)
 
+    print('algorithm finished.')
     SA = utils.make_grid(states, actions)
 
     K, optimalP = compute_optimal(env)
