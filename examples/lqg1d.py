@@ -48,15 +48,19 @@ class CurveFitQRegressor(regressor.Regressor):
         evaluateQ(self.predict)
         return Q_hat
 
+    # compatibility with ifqi_pbo
+    get_weights = lambda self: self.params
+    set_weights = lambda self, w: setattr(self, 'params', w)
+    count_params = lambda self: 2
+
 
 def init_env(seed):
     env = envs.LQG1D()
     seed = env.seed(seed)
-    print('Random seed1: {}'.format(seed))
     env.reset()
     dataset = collect_episodes(env, n=100)
 
-    return env, dataset
+    return env, dataset, seed[0]
 
 
 def compute_optimal(env):
@@ -91,16 +95,44 @@ def build_nn(activation='sigmoid', input_dim=2):
     return regressor.KerasRegressor(model, input_dim)
 
 
-def setup_pbo():
-    q = CurveFitQRegressor(np.array([0.0, 0.0]))
+def setup_pbo(env, q, args):
     bo = build_nn()
     return algorithms.NESPBO(dataset, actions, q, bo, env.gamma, K=1,
-                            batchSize=10, learningRate=0.01)
+                            batchSize=10, learningRate=0.1).run
 
 
-def setup_fqi():
-    q = CurveFitQRegressor(np.array([0.0, 0.0]))
-    return algorithms.FQI(dataset, actions, q, env.gamma)
+def setup_fqi(env, q, args):
+    return algorithms.FQI(dataset, actions, q, env.gamma).run
+
+
+
+def setup_ifqi_pbo(env, q, args):
+    from ifqi.algorithms.pbo.pbo import PBO
+    from ifqi.models.regressor import Regressor
+
+    r = Regressor(object)
+    r._regressor = q
+
+    bo = build_nn()
+    state_dim, action_dim, reward_dim = envs.get_space_info(env)
+
+    pbo = PBO(estimator=r,
+          estimator_rho=bo.model,
+          state_dim=state_dim,
+          action_dim=action_dim,
+          discrete_actions=actions,
+          gamma=env.gamma,
+          learning_steps=args.n,
+          batch_size=10,
+          learning_rate=0.1,
+          incremental=False,
+          verbose=False)
+
+    sast = utils.rec_to_array(dataset[
+        ['state', 'action', 'next_state', 'absorbing']])
+    r = dataset.reward
+
+    return lambda *args: pbo.fit(sast, r)
 
 
 if __name__ == '__main__':
@@ -123,21 +155,21 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('algorithm', help='The algorithm to run',
-                        choices=['fqi', 'pbo'])
+                        choices=['fqi', 'pbo', 'ifqi_pbo'])
     parser.add_argument('-n', type=int, default=50,
         help='number of iterations. default is 50.')
     parser.add_argument('-b', '--budget', type=int, help='budget')
     parser.add_argument('-p', '--plot', help='plot results', action='store_true')
     parser.add_argument('-t', '--timeit', type=int, default=0)
-    parser.add_argument('--seed1', type=int, help='specify a random seed.')
-    parser.add_argument('--seed2', type=int, help='seed numpy')
+    parser.add_argument('-s', '--seeds', type=int, nargs=2, default=[None, None],
+        help='specify the random seeds to be used (gym.env, np.random)')
     args = parser.parse_args()
 
     logging.config.dictConfig({
         'version': 1,
         'formatters': {
             'default': {
-                'format': '%(levelname)s:%(name)s: %(message)s',
+                'format': '%(levelname)5s:%(name)s: %(message)s',
             },
         },
         'handlers': {
@@ -162,21 +194,23 @@ if __name__ == '__main__':
     # pybrain is giving a lot of deprecation warnings
     warnings.filterwarnings('ignore', module='pybrain')
 
-    seed = seeding._seed(args.seed2)
-    np.random.seed(seeding._int_list_from_bigint(seeding.hash_seed(seed)))
+    seed2 = seeding._seed(args.seeds[1])
+    np.random.seed(seeding._int_list_from_bigint(seeding.hash_seed(seed2)))
 
-    env, dataset = init_env(args.seed1)
-    print('Random seed2: {}'.format(seed))
+    env, dataset, seed1 = init_env(args.seeds[0])
+    print('Random seeds: {} {}'.format(seed1, seed2))
 
+    # XXX could try to start from 1,0
+    q = CurveFitQRegressor(np.array([0.0, 0.0]))
     setup = locals()['setup_{}'.format(args.algorithm)]
-    algorithm = setup()
+    algorithm = setup(env, q, args)
     if args.timeit:
-        t = timeit.repeat('algorithm.run(args.n, args.budget)',
+        t = timeit.repeat('algorithm(args.n, args.budget)',
                           number=1, repeat=args.timeit, globals=globals())
         print('{} iterations, best of {}: {}s\n'.format(
                 args.n, args.timeit, min(t)))
     else:
-        algorithm.run(args.n, args.budget)
+        algorithm(args.n, args.budget)
 
     print('algorithm finished.')
     SA = utils.make_grid(states, actions)
@@ -186,7 +220,7 @@ if __name__ == '__main__':
     evaluateP(optimalP)
 
     print('\nlearned:')
-    algorithm.q.evaluate(SA, optimalP.q)
+    q.evaluate(SA, optimalP.q)
 
     if args.plot:
         plt.show()
