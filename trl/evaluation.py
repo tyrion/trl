@@ -1,7 +1,17 @@
 import numpy as np
-
 from ifqi.envs import get_space_info
 
+from . import utils
+
+
+class QPolicy:
+    def __init__(self, q, actions):
+        self.q = q
+        self.actions = actions
+
+    def draw_action(self, states, absorbing=False, evaluation=False):
+        v = self.q(utils.make_grid(states, self.actions))
+        return self.actions[v.argmax()]
 
 
 class RandomPolicy:
