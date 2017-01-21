@@ -86,7 +86,7 @@ def interact(env, n=1, horizon=100, policy=None, collect=False,
             info[e] = (t,) + m
             logger.info('Metrics: %s', m)
 
-    return dataset if collect else None, info
+    return dataset[:i] if collect else None, info
 
 
 
