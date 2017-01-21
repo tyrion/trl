@@ -33,8 +33,10 @@ class Algorithm:
         self.step(i=0, budget=budget)
 
     def run(self, n=10, budget=None):
+        logger.info('Iteration 0')
         self.first_step(budget)
         for i in range(1, n):
+            logger.info('Iteration %d', i)
             self.step(i, budget)
 
 
@@ -72,7 +74,8 @@ class PBO(Algorithm):
                 self.q.params = self.bo(self.q.params)
                 q1 = self.q(self.SA)
                 loss += norm(q1 - self.dataset.reward + self.gamma * q1, 2)
-        #log(omega, self.q.params, loss)
+        logger.debug('loss: %7d | q: %s', loss, self.q.params)
+        #np.array2string(omega, max_line_width=np.inf))
         return loss
 
 
