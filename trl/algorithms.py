@@ -71,7 +71,7 @@ class PBO(Algorithm):
             for k in range(self.K):
                 q0 = self.max_q(self.q)
 
-                self.q.params = self.bo(self.q.params)
+                self.q.params = self.bo.predict_one(self.q.params)
                 q1 = self.q(self.SA)
                 loss += norm(q1 - self.dataset.reward + self.gamma * q1, 2)
         logger.debug('loss: %7d | q: %s', loss, self.q.params)
@@ -105,6 +105,6 @@ class NESPBO(PBO):
     def step(self, i=0, budget=None):
         params, loss = self.optimizer.learn(budget)
         self.bo.params = params
-        self.q.params = self.bo(self.q.params)
+        self.q.params = self.bo.predict_one(self.q.params)
         #print(loss, delta)
         #log(i, params, loss, self.q.params)
