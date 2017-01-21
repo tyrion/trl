@@ -1,20 +1,18 @@
-#!/usr/bin/env python3
+import argparse
+import logging
+import logging.config
+import signal
+import warnings
 
-import gym
 import numpy as np
 
-from gym import spaces
+from keras.models import Sequential
+from keras.layers import Dense
+from keras import callbacks
 from scipy.optimize import curve_fit
-from sklearn.metrics import mean_absolute_error, mean_squared_error
-from mpl_toolkits.mplot3d import Axes3D
-from matplotlib import pyplot as plt
 
-
-from ifqi import envs
-from ifqi.evaluation import evaluation
-from ifqi.utils.spaces import DiscreteValued
-
-from trl import algorithms, evaluation, regressor, utils
+from trl import algorithms, ifqi, regressor
+from trl.experiment import Experiment
 
 
 class CurveFitQRegressor(regressor.Regressor):
@@ -31,8 +29,6 @@ class CurveFitQRegressor(regressor.Regressor):
 
 
 def build_nn(activation='sigmoid', input_dim=2, output_dim=2):
-    from keras.models import Sequential
-    from keras.layers import Dense
 
     model = Sequential()
     model.add(Dense(20, input_dim=input_dim, init='uniform',
@@ -43,113 +39,68 @@ def build_nn(activation='sigmoid', input_dim=2, output_dim=2):
 
 
 def build_nn2(activation='sigmoid', input_dim=2, output_dim=2):
-    from keras.models import Sequential
-    from keras.layers import Dense
+    v = 2
+    cb = callbacks.EarlyStopping(monitor='loss', min_delta=6e-1,
+                                 patience=5, verbose=v, mode='auto')
 
     model = Sequential()
-    model.add(Dense(5, input_dim=input_dim, init='uniform', activation=activation))
-    model.add(Dense(5, init='uniform', activation=activation))
+    model.add(Dense(4, input_dim=input_dim, init='uniform', activation=activation))
+    model.add(Dense(4, init='uniform', activation=activation))
     model.add(Dense(output_dim, init='uniform', activation='linear'))
-    model.compile(loss='mse', optimizer='rmsprop', metrics=['accuracy'])
-    return regressor.KerasRegressor(model, input_dim)
+    model.compile(loss='mse', optimizer='rmsprop')
+    return regressor.KerasRegressor(model, input_dim, callbacks=[cb],
+                                    nb_epoch=50, batch_size=100, verbose=v)
+
+def build_curve_fit(input_dim=2, output_dim=1):
+    return CurveFitQRegressor(np.array([0,0]))
 
 
-
-def setup_pbo(env, dataset, actions, q, args):
-    bo = build_nn()
-    return algorithms.NESPBO(dataset, actions, q, bo, gamma=0.99, K=1,
-                            batchSize=10, learningRate=0.1).run
+def handler(signum, frame):
+    logger.critical('Received Interrupt. Terminating')
+    raise SystemExit
 
 
-def setup_fqi(env, dataset, actions, q, args):
-    return algorithms.FQI(dataset, actions, q, gamma=0.99).run
+class CLIExperiment(Experiment):
 
+    def get_q(self, q):
+        q = globals()['build_{}'.format(q)]
+        return q(input_dim=self.input_dim, output_dim=1)
 
+    def get_algorithm(self, algorithm, **kwargs):
+        algo = {
+            'fqi': algorithms.FQI,
+            'pbo': algorithms.NESPBO,
+            'ifqi_fqi': ifqi.FQI,
+            'ifqi_pbo': ifqi.PBO,
+        }[algorithm]
 
-def setup_ifqi_pbo(env, dataset, actions, q, args):
-    from ifqi.algorithms.pbo.pbo import PBO
-    from ifqi.models.regressor import Regressor
+        if 'pbo' in algorithm:
+            dim = len(self.q.params)
+            kwargs['bo'] = build_nn2(input_dim=dim, output_dim=dim)
 
-    r = Regressor(object)
-    r._regressor = q
-
-    bo = build_nn()
-    state_dim, action_dim, reward_dim = envs.get_space_info(env)
-
-    pbo = PBO(estimator=r,
-          estimator_rho=bo.model,
-          state_dim=state_dim,
-          action_dim=action_dim,
-          discrete_actions=actions,
-          gamma=env.gamma,
-          learning_steps=args.n,
-          batch_size=10,
-          learning_rate=0.1,
-          incremental=False,
-          verbose=False)
-
-    sast = utils.rec_to_array(dataset[
-        ['state', 'action', 'next_state', 'absorbing']])
-    r = dataset.reward
-
-    return lambda *args: pbo.fit(sast, r)
-
-
-def get_env(name):
-    try:
-        return getattr(envs, name)()
-    except AttributeError:
-        return gym.make(name)
-
-
-def discretize_space(space: gym.Space, max=20):
-    if isinstance(space, spaces.Discrete):
-        return np.arange(space.n)
-
-    if isinstance(space, spaces.Box):
-        # only 1D Box supported
-        return np.linspace(space.low, space.high, max)
-
-    if isinstance(space, DiscreteValued):
-        return space.values
-
-    raise NotImplementedError
-
-
-def get_space_dim(space: gym.Space):
-    return np.prod(getattr(space, 'shape', 1))
+        return algo(self, **kwargs)
 
 
 
 if __name__ == '__main__':
-    import argparse
-    import logging
-    import logging.config
-    import random
-    import signal
-    import time
-    import timeit
-    import warnings
-
-    from gym.utils import seeding
-
-    def handler(signum, frame):
-        print('Received Interrupt. Terminating')
-        raise SystemExit
-
     signal.signal(signal.SIGINT, handler)
 
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument('env',
         help='The environment to use. Either from ifqi or gym.')
-    parser.add_argument('algorithm', choices=['fqi', 'pbo', 'ifqi_pbo'],
+    parser.add_argument('algorithm',
+        choices=['fqi', 'pbo', 'ifqi_fqi', 'ifqi_pbo'],
         help='The algorithm to run')
-    parser.add_argument('-n', type=int, default=50,
-        help='number of learning iterations. default is 50.')
-    parser.add_argument('-e', '--episodes', type=int, default=100,
+    parser.add_argument('-q', help='Q regressor to use',
+        choices=['nn', 'nn2', 'curve_fit'], default='nn2')
+    parser.add_argument('-n', '--training-iterations', type=int, default=50,
+        help='number of training iterations. default is 50.')
+    parser.add_argument('-te', '--training-episodes', type=int, default=100,
+        help='Number of training episodes to collect.')
+    parser.add_argument('-ee', '--evaluation-episodes', type=int, default=10,
         help='Number of training episodes to collect.')
     parser.add_argument('-h', '--horizon', type=int,
-        help='Max number of steps per training episode.')
+        help='Max number of steps per episode.')
     parser.add_argument('-b', '--budget', type=int, help='budget')
     parser.add_argument('-r', '--render', action='store_true',
         help='Render the environment during evaluation.')
@@ -185,55 +136,20 @@ if __name__ == '__main__':
         },
 
     })
+    logger = logging.getLogger('')
 
     # pybrain is giving a lot of deprecation warnings
     warnings.filterwarnings('ignore', module='pybrain')
 
-    # seeding np.random (for pybrain)
-    seed = seeding._seed(args.seeds[1])
-    np.random.seed(seeding._int_list_from_bigint(seeding.hash_seed(seed)))
+    args = dict(vars(args))
+    args['np_seed'], args['env_seed'] = args.pop('seeds')
+    timeit = args.pop('timeit')
 
-    env = get_env(args.env)
-    seeds = env.seed(args.seeds[0])
-    seeds.append(seed)
-    env.reset()
-    print('Random seeds:', ' '.join(str(x) for x in seeds))
-    print('Initialized env', args.env)
-    print('observation space: ', env.observation_space)
-    print('action space: ', env.action_space)
-
-    actions = discretize_space(env.action_space)
-    print('Discretized actions ({}): {}'.format(len(actions), actions))
-
-    # collect training data
-    horizon = args.horizon or getattr(env, 'horizon', 100)
-    print('Collecting training data (episodes: {}, horizon: {})'.format(
-        args.episodes, horizon), end='')
-    dataset, _ = evaluation.interact(env, args.episodes, horizon, collect=True)
-    env.reset()
-    print(' done')
-
-
-
-    print('Training algorithm')
-    input_dim = get_space_dim(env.observation_space) + \
-                get_space_dim(env.action_space)
-    q = build_nn2(input_dim=input_dim, output_dim=1)
-    q = CurveFitQRegressor(np.array([1.0, 0.0]))
-
-    setup = locals()['setup_{}'.format(args.algorithm)]
-    algorithm = setup(env, dataset, actions, q, args)
-    if args.timeit:
-        t = timeit.repeat('algorithm(args.n, args.budget)',
-                          number=1, repeat=args.timeit, globals=globals())
-        print('{} iterations, best of {}: {}s\n'.format(
-                args.n, args.timeit, min(t)))
+    experiment = CLIExperiment(**args)
+    logger.info('Training..')
+    if timeit:
+        experiment.benchmark(timeit)
     else:
-        algorithm(args.n, args.budget)
-
-    print('Training finished.')
-    print('Evaluating model')
-
-    policy = evaluation.QPolicy(q, actions)
-    evaluation.interact(env, 5, horizon, policy, render=args.render,
-                        metrics=[evaluation.discounted(0.9)])
+        experiment.train()
+    logger.info('Evaluating..')
+    experiment.evaluate()

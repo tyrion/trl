@@ -5,18 +5,21 @@ from numpy.linalg import norm
 from pybrain.optimization import ExactNES
 
 from . import utils
+from .experiment import Experiment
 
 
 logger = logging.getLogger(__name__)
 
 
 class Algorithm:
-    def __init__(self, dataset, actions, gamma=1):
-        self.dataset = dataset
-        self.actions = actions
-        self.gamma = 1
-        self.S1A = utils.make_grid(dataset.next_state, actions)
-        self.SA = utils.rec_to_array(dataset[['state', 'action']])
+    def __init__(self, experiment: Experiment):
+        self.dataset = experiment.dataset
+        self.actions = experiment.actions
+        self.gamma = experiment.gamma
+        self.q = experiment.q
+        self.experiment = experiment
+        self.S1A = utils.make_grid(self.dataset.next_state, self.actions)
+        self.SA = utils.rec_to_array(self.dataset[['state', 'action']])
 
     def max_q(self, q):
         n = len(self.dataset)
@@ -42,11 +45,6 @@ class Algorithm:
 
 class FQI(Algorithm):
 
-    def __init__(self, dataset, actions, q, gamma=1):
-        super().__init__(dataset, actions)
-        self.q = q
-        self.gamma = 1
-
     def first_step(self, budget=None):
         # XXX I think first step like this is ok only if self.q is 0
         self.q.fit(self.SA, self.dataset.reward)
@@ -59,10 +57,9 @@ class FQI(Algorithm):
 
 class PBO(Algorithm):
 
-    def __init__(self, dataset, actions, q, bo, gamma=1, K=1):
-        super().__init__(dataset, actions, gamma)
+    def __init__(self, experiment, bo, K=1):
+        super().__init__(experiment)
         self.bo = bo
-        self.q = q
         self.K = K
 
     def loss(self, omega):
@@ -79,11 +76,6 @@ class PBO(Algorithm):
         return loss
 
 
-## ipotesi per il logging
-# 1. passarre oggetto custom come msg, con __str__ e usare un handler
-# 2.
-
-
 class LoggingNES(ExactNES):
     prev = None
 
@@ -97,8 +89,8 @@ class LoggingNES(ExactNES):
 
 class NESPBO(PBO):
 
-    def __init__(self, dataset, actions, q, bo, gamma=1, K=1, **nes_args):
-        super().__init__(dataset, actions, q, bo, gamma, K)
+    def __init__(self, experiment, bo, K=1, **nes_args):
+        super().__init__(experiment, bo, K)
         self.optimizer = LoggingNES(self.loss, self.bo.params, minimize=True,
                                     importanceMixing=False, **nes_args)
 
