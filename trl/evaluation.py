@@ -66,10 +66,10 @@ def interact(env, n=1, horizon=100, policy=None, collect=False,
                 env.render()
                 time.sleep(1 / fps)
 
-            action = policy.draw_action(state)
+            action = policy.draw_action(state.reshape(1, -1))
             next_state, reward, done, _ = env.step(action)
             episode[t] = (state, action, reward, next_state, 0, done)
-            logging.debug(episode[t])
+            logger.debug(episode[t])
 
             if done:
                 episode = episode[:t+1]
@@ -80,11 +80,11 @@ def interact(env, n=1, horizon=100, policy=None, collect=False,
         t += 1
         i += t
 
-        logging.info('Episode %d finished in %d steps.', e, t)
+        logger.info('Episode %d finished in %d steps.', e, t)
         if metrics:
             m = tuple(m(episode) for m in metrics)
             info[e] = (t,) + m
-            logging.info('Metrics: %s', m)
+            logger.info('Metrics: %s', m)
 
     return dataset if collect else None, info
 
