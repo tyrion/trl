@@ -28,6 +28,11 @@ class Regressor(metaclass=ABCMeta):
         yield
         self.params = oldpar
 
+    # compatibility with ifqi_pbo
+    get_weights = lambda self: self.params
+    set_weights = lambda self, w: setattr(self, 'params', w)
+    count_params = lambda self: len(self.params)
+
 
 class KerasRegressor(Regressor):
 
@@ -63,9 +68,10 @@ class KerasRegressor(Regressor):
         self._params = weights
 
     def fit(self, x, y):
-        del self._params
-        return self.model.fit(x, y)
+        self._params = None
+        #i = x.reshape(-1, self.input_dim)
+        return self.model.fit(x, y, nb_epoch=5, verbose=2)
 
     def predict(self, x):
-        i = x.reshape(-1, self.input_dim)
-        return self.model.predict(i).reshape(x.shape)
+        x = x.reshape(-1, self.input_dim)
+        return self.model.predict(x)
