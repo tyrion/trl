@@ -151,7 +151,8 @@ if __name__ == '__main__':
     parser.add_argument('-h', '--horizon', type=int,
         help='Max number of steps per training episode.')
     parser.add_argument('-b', '--budget', type=int, help='budget')
-    parser.add_argument('-p', '--plot', help='plot results', action='store_true')
+    parser.add_argument('-r', '--render', action='store_true',
+        help='Render the environment during evaluation.')
     parser.add_argument('-t', '--timeit', type=int, default=0)
     parser.add_argument('-s', '--seeds', type=int, nargs=2, default=[None, None],
         help='specify the random seeds to be used (gym.env, np.random)')
@@ -234,5 +235,5 @@ if __name__ == '__main__':
     print('Evaluating model')
 
     policy = evaluation.QPolicy(q, actions)
-    evaluation.interact(env, 5, horizon, policy, render=True,
+    evaluation.interact(env, 5, horizon, policy, render=args.render,
                         metrics=[evaluation.discounted(0.9)])
