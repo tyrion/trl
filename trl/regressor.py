@@ -17,6 +17,9 @@ class Regressor(metaclass=ABCMeta):
     def predict(self, x):
         pass
 
+    def predict_one(self, x):
+        return self.predict(x[np.newaxis, :])[0]
+
     def __call__(self, x):
         return self.predict(x)
 
@@ -36,10 +39,11 @@ class Regressor(metaclass=ABCMeta):
 
 class KerasRegressor(Regressor):
 
-    def __init__(self, model, input_dim=2):
+    def __init__(self, model, input_dim=2, **fit_kwargs):
         self.model = model
         self.input_dim = input_dim
         self._params = self._shape = None
+        self.fit_kwargs = fit_kwargs
 
     @property
     def params(self):
@@ -53,6 +57,7 @@ class KerasRegressor(Regressor):
 
     @params.setter
     def params(self, weights):
+        weights = weights.ravel()
         if self._shapes is None:
             self.params
 
@@ -70,7 +75,7 @@ class KerasRegressor(Regressor):
     def fit(self, x, y):
         self._params = None
         #i = x.reshape(-1, self.input_dim)
-        return self.model.fit(x, y, nb_epoch=5, verbose=2)
+        return self.model.fit(x, y, **self.fit_kwargs)
 
     def predict(self, x):
         x = x.reshape(-1, self.input_dim)
