@@ -12,10 +12,9 @@ from matplotlib import pyplot as plt
 
 from ifqi import envs
 from ifqi.evaluation import evaluation
+from ifqi.utils.spaces import DiscreteValued
 
 from trl import algorithms, evaluation, regressor, utils
-
-
 
 
 class CurveFitQRegressor(regressor.Regressor):
@@ -110,6 +109,11 @@ def discretize_space(space: gym.Space, max=20):
     if isinstance(space, spaces.Box):
         # only 1D Box supported
         return np.linspace(space.low, space.high, max)
+
+    if isinstance(space, DiscreteValued):
+        return space.values
+
+    raise NotImplementedError
 
 
 def get_space_dim(space: gym.Space):
@@ -211,11 +215,10 @@ if __name__ == '__main__':
 
 
     print('Training algorithm')
-    # XXX could try to start from 1,0
-    #q = CurveFitQRegressor(np.array([1.0, 0.0]))
     input_dim = get_space_dim(env.observation_space) + \
                 get_space_dim(env.action_space)
     q = build_nn2(input_dim=input_dim, output_dim=1)
+    q = CurveFitQRegressor(np.array([1.0, 0.0]))
 
     setup = locals()['setup_{}'.format(args.algorithm)]
     algorithm = setup(env, dataset, actions, q, args)
@@ -228,7 +231,8 @@ if __name__ == '__main__':
         algorithm(args.n, args.budget)
 
     print('Training finished.')
+    print('Evaluating model')
 
     policy = evaluation.QPolicy(q, actions)
-    evaluation.interact(env, 10, 500, policy, render=True,
+    evaluation.interact(env, 5, horizon, policy, render=True,
                         metrics=[evaluation.discounted(0.9)])
