@@ -48,5 +48,6 @@ setup(
         'scikit-learn>=0.18.1',
         'pybrain>=0.3',
         'matplotlib>=2.0.0',
+        'h5py>=2.6.0',
     ],
 )

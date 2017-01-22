@@ -1,12 +1,41 @@
 from abc import ABCMeta, abstractmethod
 from contextlib import contextmanager
 
+import base64
+import copy
 import logging
+import pickle
 
 import numpy as np
+import h5py
 
 
 logger = logging.getLogger(__name__)
+
+
+def load_regressor(filepath):
+    f = h5py.File(filepath, 'r')
+    regressor = f['regressor']
+    cls = _loads(regressor.attrs['class'])
+    try:
+        return cls.load(regressor)
+    finally:
+        f.close()
+
+
+def save_regressor(regressor, filepath):
+    f = h5py.File(filepath, 'w')
+    data = regressor.save(f)
+    f['regressor'] = data
+    f.flush()
+    f.close()
+
+
+def _dumps(object):
+    return base64.b64encode(pickle.dumps(object))
+
+def _loads(object):
+    return pickle.loads(base64.b64decode(object))
 
 
 class Regressor(metaclass=ABCMeta):
@@ -28,6 +57,15 @@ class Regressor(metaclass=ABCMeta):
     def __call__(self, x):
         return self.predict(x)
 
+    def save(self, group):
+        regressor = group.create_dataset(None, data=self.params)
+        regressor.attrs['class'] = _dumps(self.__class__)
+        return regressor
+
+    @classmethod
+    def load(cls, dataset):
+        return cls(dataset[:])
+
     @contextmanager
     def save_params(self, params=None):
         oldpar = self.params
@@ -40,6 +78,20 @@ class Regressor(metaclass=ABCMeta):
     get_weights = lambda self: self.params
     set_weights = lambda self, w: setattr(self, 'params', w)
     count_params = lambda self: len(self.params)
+
+
+
+# XXX dirty hack, monkey patching h5py
+@contextmanager
+def _patch_h5(group):
+    group.flush = lambda: None
+    group.close = lambda: None
+    File = h5py.File
+    h5py.File = lambda *a, **kw: group
+    yield
+    h5py.File = File
+    del group.flush
+    del group.close
 
 
 class KerasRegressor(Regressor):
@@ -81,10 +133,11 @@ class KerasRegressor(Regressor):
     def fit(self, x, y, **kwargs):
         self._params = None
 
-        fit_kwargs = self.fit_kwargs
-        if kwargs:
-            fit_kwargs = fit_kwargs.copy()
+        if self.fit_kwargs:
+            fit_kwargs = copy.deepcopy(self.fit_kwargs)
             fit_kwargs.update(kwargs)
+        else:
+            fit_kwargs = kwargs
 
         #i = x.reshape(-1, self.input_dim)
         history = self.model.fit(x, y, **fit_kwargs)
@@ -95,3 +148,32 @@ class KerasRegressor(Regressor):
     def predict(self, x):
         x = x.reshape(-1, self.input_dim)
         return self.model.predict(x)
+
+    def get_config(self):
+        config = copy.deepcopy(self.fit_kwargs)
+        config['input_dim'] = self.input_dim
+        return config
+
+    def save(self, group):
+        group = group.create_group(None)
+        group.attrs['class'] = _dumps(self.__class__)
+        group.attrs['config'] = _dumps(self.get_config())
+
+        with _patch_h5(group):
+            self.model.save('whatever', overwrite=True)
+
+        return group
+
+    @classmethod
+    def load(cls, group):
+        from keras.models import load_model
+        config = _loads(group.attrs['config'])
+
+        with _patch_h5(group):
+            model = load_model('whatever')
+
+        return cls.from_config(model, config)
+
+    @classmethod
+    def from_config(cls, model, config):
+        return cls(model, **config)
