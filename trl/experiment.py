@@ -18,7 +18,7 @@ class Experiment:
                  gamma: float = None, budget: int = None,
                  training_episodes: int = 100,
                  training_iterations: int = 50,
-                 evaluation_episodes: int = 10,
+                 evaluation_episodes: int = None,
                  initial_states=None, np_seed=None, env_seed=None,
                  render=True,
                  **algorithm_options):
@@ -45,10 +45,12 @@ class Experiment:
 
         self.horizon = self.get_horizon(horizon)
         self.gamma = self.get_gamma(gamma)
-        self.initial_states = self.get_initial_states(initial_states)
+        self.initial_states = i = self.get_initial_states(initial_states)
+        if self.evaluation_episodes is None:
+            self.evaluation_episodes = len(i) if i is not None else 10
+
         self.dataset = self.get_dataset()
         self.q = self.get_q(q)
-
         self.algorithm = self.get_algorithm(algorithm, **algorithm_options)
 
 
@@ -64,7 +66,8 @@ class Experiment:
         np_seed = seeding._seed(np_seed)
         np.random.seed(
             seeding._int_list_from_bigint(seeding.hash_seed(np_seed)))
-        env_seed = self.env.seed(env_seed)[0]
+        env_seeds = self.env.seed(env_seed)
+        env_seed = env_seeds[0] if env_seeds else None
         logger.info('Random seeds (np, env): %s %s', np_seed, env_seed)
         return np_seed, env_seed
 
@@ -79,7 +82,7 @@ class Experiment:
 
     def get_initial_states(self, initial_states=None):
         # FIXME allow random
-        return initial_states or getattr(self, 'initial_states', None)
+        return initial_states or getattr(self.env, 'initial_states', None)
 
     def get_dataset(self):
         logger.info('Collecting training data (episodes: %d, horizon: %d)',
@@ -109,4 +112,5 @@ class Experiment:
         policy = evaluation.QPolicy(self.q, self.actions)
         evaluation.interact(self.env, self.evaluation_episodes, self.horizon,
                             policy, render=self.render,
+                            initial_states=self.initial_states,
                             metrics=[evaluation.discounted(self.gamma)])
