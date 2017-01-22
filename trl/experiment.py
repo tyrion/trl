@@ -53,7 +53,6 @@ class Experiment:
         self.q = self.get_q(q)
         self.algorithm = self.get_algorithm(algorithm, **algorithm_options)
 
-
     def get_env(self, env):
         return gym.make(env)
 
@@ -109,4 +108,5 @@ class Experiment:
         evaluation.interact(self.env, self.evaluation_episodes, self.horizon,
                             policy, render=self.render,
                             initial_states=self.initial_states,
-                            metrics=[evaluation.discounted(self.gamma)])
+                            metrics=[evaluation.average,
+                                     evaluation.discounted(self.gamma)])
