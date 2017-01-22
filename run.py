@@ -68,18 +68,21 @@ def handler(signum, frame):
 class CLIExperiment(Experiment):
 
     def get_q(self, q):
-        q = globals()['build_{}'.format(q)]
-        return q(input_dim=self.input_dim, output_dim=1)
+        r = globals().get('build_{}'.format(q), None)
+        if r is not None:
+            return r(input_dim=self.input_dim, output_dim=1)
 
-    def get_algorithm(self, algorithm, **kwargs):
+        return super().get_q(q)
+
+    def get_algorithm(self, **kwargs):
         algo = {
             'fqi': algorithms.FQI,
             'pbo': algorithms.NESPBO,
             'ifqi_fqi': ifqi.FQI,
             'ifqi_pbo': ifqi.PBO,
-        }[algorithm]
+        }[self.algorithm]
 
-        if 'pbo' in algorithm:
+        if 'pbo' in self.algorithm:
             dim = len(self.q.params)
             kwargs['bo'] = build_nn2(input_dim=dim, output_dim=dim)
 
@@ -91,13 +94,11 @@ if __name__ == '__main__':
     signal.signal(signal.SIGINT, handler)
 
     parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument('env',
+    parser.add_argument('env_name',
         help='The environment to use. Either from ifqi or gym.')
     parser.add_argument('algorithm',
         choices=['fqi', 'pbo', 'ifqi_fqi', 'ifqi_pbo'],
         help='The algorithm to run')
-    parser.add_argument('-q', help='Q regressor to use',
-        choices=['nn', 'nn2', 'curve_fit'], default='nn2')
     parser.add_argument('-n', '--training-iterations',
         metavar='N', type=int, default=50,
         help='number of training iterations. default is 50.')
@@ -110,14 +111,31 @@ if __name__ == '__main__':
     parser.add_argument('-h', '--horizon', type=int, metavar='N',
         help='Max number of steps per episode.')
     parser.add_argument('-b', '--budget', type=int, help='budget', metavar='N')
-    parser.add_argument('-r', '--render', action='store_true',
+
+    io = parser.add_argument_group('io', 'Load/Save')
+    io.add_argument('-l', '--load', metavar='FILEPATH', dest='load_path',
+        help='Load both the dataset and the Q regressor from FILEPATH')
+    io.add_argument('--load-dataset', metavar='FILEPATH',
+        help='Load the dataset from FILEPATH', dest='dataset_load_path')
+    io.add_argument('-q', '--load-regressor', metavar='FILEPATH', dest='q_load_path',
+        help='Load the trained Q regressor from FILEPATH. You can also specify'
+             'one of {nn,nn2,curve_fit} instead of FILEPATH.', default='nn2')
+    io.add_argument('-o', '--save', metavar='FILEPATH', dest='save_path',
+        help='Save both the dataset and the Q regressor to FILEPATH')
+    io.add_argument('--save-dataset', metavar='FILEPATH',
+        help='Save the dataset to FILEPATH', dest='dataset_save_path')
+    io.add_argument('--save-regressor', metavar='FILEPATH', dest='q_save_path',
+        help='Save the trained Q regressor to FILEPATH')
+
+    others = parser.add_argument_group('others')
+    others.add_argument('-r', '--render', action='store_true',
         help='Render the environment during evaluation.')
-    parser.add_argument('--timeit', type=int, default=0, metavar='N',
+    others.add_argument('--timeit', type=int, default=0, metavar='N',
         help='Benchmark algorithm, using N repetitions')
-    parser.add_argument('-s', '--seeds', type=int,
+    others.add_argument('-s', '--seeds', type=int,
         nargs=2, default=[None, None], metavar='SEED',
         help='specify the random seeds to be used (gym.env, np.random)')
-    parser.add_argument('--help', action='help',
+    others.add_argument('--help', action='help',
         help='show this help message and exit')
     args = parser.parse_args()
 
@@ -153,11 +171,6 @@ if __name__ == '__main__':
 
     args = dict(vars(args))
     args['np_seed'], args['env_seed'] = args.pop('seeds')
-    timeit = args.pop('timeit')
 
-    experiment = CLIExperiment(**args)
-    if timeit:
-        experiment.benchmark(timeit)
-    else:
-        experiment.train()
-    experiment.evaluate()
+    experiment = CLIExperiment.make(**args)
+    experiment()

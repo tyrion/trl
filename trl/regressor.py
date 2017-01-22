@@ -20,15 +20,22 @@ def load_regressor(filepath):
     try:
         return cls.load(regressor)
     finally:
+        logger.info('Loaded regressor from %s', filepath)
         f.close()
 
 
 def save_regressor(regressor, filepath):
-    f = h5py.File(filepath, 'w')
-    data = regressor.save(f)
-    f['regressor'] = data
-    f.flush()
-    f.close()
+    f = h5py.File(filepath)
+    try:
+        data = regressor.save(f)
+        if 'regressor' in f:
+            del f['regressor']
+        f['regressor'] = data
+        f.flush()
+    finally:
+        f.close()
+
+    logger.info('Saved regressor to %s', filepath)
 
 
 def _dumps(object):
