@@ -55,11 +55,7 @@ class Experiment:
 
 
     def get_env(self, env):
-        try:
-            from ifqi import envs
-            return getattr(envs, env)()
-        except (ImportError, AttributeError):
-            return gym.make(env)
+        return gym.make(env)
 
     def set_seeds(self, np_seed=None, env_seed=None):
         # seeding np.random (for pybrain)
