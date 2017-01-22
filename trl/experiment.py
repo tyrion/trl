@@ -100,9 +100,9 @@ class Experiment:
 
     def benchmark(self, repeat):
         t = timeit.repeat('self.train()', number=1, repeat=repeat,
-                          globals=globals())
-        logger.info('%d iterations, best of %d: %fs'.format(
-                self.training_iterations, repeat, min(t)))
+                          globals=locals())
+        logger.info('%d iterations, best of %d: %fs',
+                self.training_iterations, repeat, min(t))
 
     def evaluate(self):
         policy = evaluation.QPolicy(self.q, self.actions)
