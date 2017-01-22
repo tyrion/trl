@@ -44,7 +44,7 @@ def allocate_dataset(env, n=1):
 
 
 def interact(env, n=1, horizon=100, policy=None, collect=False,
-                     metrics=(), render=False):
+                     metrics=(), render=False, initial_states=None):
     if policy is None:
         policy = RandomPolicy(env)
 
@@ -59,6 +59,10 @@ def interact(env, n=1, horizon=100, policy=None, collect=False,
     i = 0
     for e in range(n):
         state = env.reset()
+        if initial_states is not None:
+            state = env.state = initial_states[e]
+
+        logger.info('Episode %d starting in %s', e, state)
         episode = dataset[i:i+horizon] if collect else dataset
 
         for t in range(horizon):
