@@ -49,6 +49,8 @@ class Experiment:
         if self.evaluation_episodes is None:
             self.evaluation_episodes = len(i) if i is not None else 10
 
+        logger.info('Gamma: %f', self.gamma)
+
         self.dataset = self.get_dataset()
         self.q = self.get_q(q)
         self.algorithm = self.get_algorithm(algorithm, **algorithm_options)
@@ -95,6 +97,8 @@ class Experiment:
         return algorithm(self, **kwargs)
 
     def train(self):
+        logger.info('Training algorithm (iterations: %d, budget: %s)',
+                    self.training_iterations, self.budget)
         return self.algorithm.run(self.training_iterations, self.budget)
 
     def benchmark(self, repeat):
@@ -104,6 +108,8 @@ class Experiment:
                 self.training_iterations, repeat, min(t))
 
     def evaluate(self):
+        logger.info('Evaluating algorithm (episodes: %d)',
+                    self.evaluation_episodes)
         policy = evaluation.QPolicy(self.q, self.actions)
         evaluation.interact(self.env, self.evaluation_episodes, self.horizon,
                             policy, render=self.render,

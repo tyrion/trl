@@ -1,7 +1,12 @@
 from abc import ABCMeta, abstractmethod
 from contextlib import contextmanager
 
+import logging
+
 import numpy as np
+
+
+logger = logging.getLogger(__name__)
 
 
 class Regressor(metaclass=ABCMeta):
@@ -44,6 +49,7 @@ class KerasRegressor(Regressor):
         self.input_dim = input_dim
         self._params = self._shape = None
         self.fit_kwargs = fit_kwargs
+        fit_kwargs.setdefault('verbose', 0)
 
     @property
     def params(self):
@@ -72,10 +78,19 @@ class KerasRegressor(Regressor):
         self.model.set_weights(result)
         self._params = weights
 
-    def fit(self, x, y):
+    def fit(self, x, y, **kwargs):
         self._params = None
+
+        fit_kwargs = self.fit_kwargs
+        if kwargs:
+            fit_kwargs = fit_kwargs.copy()
+            fit_kwargs.update(kwargs)
+
         #i = x.reshape(-1, self.input_dim)
-        return self.model.fit(x, y, **self.fit_kwargs)
+        history = self.model.fit(x, y, **fit_kwargs)
+        loss = history.history['loss'][-1]
+        logger.info('Epochs: %d, loss: %f', len(history.epoch), loss)
+        return history
 
     def predict(self, x):
         x = x.reshape(-1, self.input_dim)

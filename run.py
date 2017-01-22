@@ -45,9 +45,8 @@ def build_nn2(activation='sigmoid', input_dim=2, output_dim=2):
     from keras.layers import Dense
     from keras import callbacks
 
-    v = 2
     cb = callbacks.EarlyStopping(monitor='loss', min_delta=6e-1,
-                                 patience=5, verbose=v, mode='auto')
+                                 patience=5, mode='auto')
 
     model = Sequential()
     model.add(Dense(4, input_dim=input_dim, init='uniform', activation=activation))
@@ -55,7 +54,7 @@ def build_nn2(activation='sigmoid', input_dim=2, output_dim=2):
     model.add(Dense(output_dim, init='uniform', activation='linear'))
     model.compile(loss='mse', optimizer='rmsprop')
     return regressor.KerasRegressor(model, input_dim, callbacks=[cb],
-                                    nb_epoch=50, batch_size=100, verbose=v)
+                                    nb_epoch=50, batch_size=100)
 
 def build_curve_fit(input_dim=2, output_dim=1):
     return CurveFitQRegressor(np.array([0,0]))
@@ -157,10 +156,8 @@ if __name__ == '__main__':
     timeit = args.pop('timeit')
 
     experiment = CLIExperiment(**args)
-    logger.info('Training..')
     if timeit:
         experiment.benchmark(timeit)
     else:
         experiment.train()
-    logger.info('Evaluating..')
     experiment.evaluate()
