@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import argparse
 import logging
 import logging.config
@@ -6,9 +7,7 @@ import warnings
 
 import numpy as np
 
-from keras.models import Sequential
-from keras.layers import Dense
-from keras import callbacks
+
 from scipy.optimize import curve_fit
 
 from trl import algorithms, ifqi, regressor
@@ -29,6 +28,9 @@ class CurveFitQRegressor(regressor.Regressor):
 
 
 def build_nn(activation='sigmoid', input_dim=2, output_dim=2):
+    from keras.models import Sequential
+    from keras.layers import Dense
+    from keras import callbacks
 
     model = Sequential()
     model.add(Dense(20, input_dim=input_dim, init='uniform',
@@ -39,6 +41,10 @@ def build_nn(activation='sigmoid', input_dim=2, output_dim=2):
 
 
 def build_nn2(activation='sigmoid', input_dim=2, output_dim=2):
+    from keras.models import Sequential
+    from keras.layers import Dense
+    from keras import callbacks
+
     v = 2
     cb = callbacks.EarlyStopping(monitor='loss', min_delta=6e-1,
                                  patience=5, verbose=v, mode='auto')
@@ -93,19 +99,24 @@ if __name__ == '__main__':
         help='The algorithm to run')
     parser.add_argument('-q', help='Q regressor to use',
         choices=['nn', 'nn2', 'curve_fit'], default='nn2')
-    parser.add_argument('-n', '--training-iterations', type=int, default=50,
+    parser.add_argument('-n', '--training-iterations',
+        metavar='N', type=int, default=50,
         help='number of training iterations. default is 50.')
-    parser.add_argument('-te', '--training-episodes', type=int, default=100,
+    parser.add_argument('-t', '--training-episodes',
+        metavar='N', type=int, default=100,
         help='Number of training episodes to collect.')
-    parser.add_argument('-ee', '--evaluation-episodes', type=int, default=10,
-        help='Number of training episodes to collect.')
-    parser.add_argument('-h', '--horizon', type=int,
+    parser.add_argument('-e', '--evaluation-episodes',
+        metavar='N', type=int,
+        help='Number of episodes to use for evaluation.')
+    parser.add_argument('-h', '--horizon', type=int, metavar='N',
         help='Max number of steps per episode.')
-    parser.add_argument('-b', '--budget', type=int, help='budget')
+    parser.add_argument('-b', '--budget', type=int, help='budget', metavar='N')
     parser.add_argument('-r', '--render', action='store_true',
         help='Render the environment during evaluation.')
-    parser.add_argument('-t', '--timeit', type=int, default=0)
-    parser.add_argument('-s', '--seeds', type=int, nargs=2, default=[None, None],
+    parser.add_argument('--timeit', type=int, default=0, metavar='N',
+        help='Benchmark algorithm, using N repetitions')
+    parser.add_argument('-s', '--seeds', type=int,
+        nargs=2, default=[None, None], metavar='SEED',
         help='specify the random seeds to be used (gym.env, np.random)')
     parser.add_argument('--help', action='help',
         help='show this help message and exit')
