@@ -10,6 +10,7 @@ import pickle
 import numpy as np
 import h5py
 from sklearn.externals import joblib
+from ifqi.models import actionregressor
 
 
 logger = logging.getLogger(__name__)
@@ -83,7 +84,7 @@ class Regressor(metaclass=ABCMeta):
         yield
         self.params = oldpar
 
-    # compatibility with ifqi_pbo
+    # compatibility with ifqi
     get_weights = lambda self: self.params
     set_weights = lambda self, w: setattr(self, 'params', w)
     count_params = lambda self: len(self.params)
@@ -210,3 +211,56 @@ class SkLearnRegressorMixin(Regressor):
     @classmethod
     def load(cls, dataset):
         return joblib.load(io.BytesIO(dataset[:]))
+
+
+class ActionRegressor(Regressor):
+
+    def __init__(self, regressors, actions):
+        if isinstance(regressors, Regressor):
+            regressors = [copy.deepcopy(regressors) for _ in actions]
+
+        self.regressors = regressors
+        self.actions = actions.reshape(len(actions), -1)
+        self.action_dim = self.actions.shape[-1]
+
+    @property
+    def params(self):
+        raise NotImplementedError
+
+    @params.setter
+    def params(self, params):
+        raise NotImplementedError
+
+    def _regressors(self, actions):
+        for action, regressor in zip(self.actions, self.regressors):
+            i = np.all(actions == action, axis=1)
+            if np.any(i):
+                yield regressor, i
+
+    def fit(self, x, y):
+        states, actions = np.hsplit(x, [-self.action_dim])
+        for regressor, i in self._regressors(actions):
+            regressor.fit(states[i], y[i])
+
+    def predict(self, x):
+        states, actions = np.hsplit(x, [-self.action_dim])
+        predictions = np.zeros(len(x))
+        for regressor, i in self._regressors(actions):
+            predictions[i] = regressor.predict(states[i])
+        return predictions
+
+    def save(self, group):
+        group = group.create_group(None)
+        for i, regressor in enumerate(self.regressors):
+            group['regressor-{}'.format(i)] = regressor.save(group)
+
+        group.create_dataset('actions', data=self.actions)
+        group.attrs['class'] = _dumps(self.__class__)
+        return group
+
+    @classmethod
+    def load(cls, group):
+        regressors = [_loads(v.attrs['class']).load(v) for (k,v)
+                      in sorted(group.items()) if k.startswith('reg')]
+        actions = group['actions'][:]
+        return cls(regressors, actions)
