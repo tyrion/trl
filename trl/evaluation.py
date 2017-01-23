@@ -43,6 +43,27 @@ def allocate_dataset(env, n=1):
     return dataset
 
 
+def _get_reset(env, initial_states=None):
+    if initial_states is None:
+        return env.reset
+
+    try:
+        env.reset(initial_states[0])
+    except TypeError:
+        logging.warning('The env does not support setting the state. '
+                        'Trying with `env.state = state`')
+        env.reset_ = env.reset
+        env.reset = lambda self, s: (setattr(self, 'state', s), s)[1]
+
+    i = -1
+    def reset():
+        nonlocal i
+        i += 1
+        return env.reset(initial_states[i])
+
+    return reset
+
+
 def interact(env, n=1, horizon=100, policy=None, collect=False,
                      metrics=(), render=False, initial_states=None):
     if policy is None:
@@ -56,12 +77,11 @@ def interact(env, n=1, horizon=100, policy=None, collect=False,
         info = np.recarray((n,),
                 [('time', int)] + [(m.__name__, float) for m in metrics])
 
+    reset = _get_reset(env, initial_states)
+
     i = 0
     for e in range(n):
-        state = env.reset()
-        if initial_states is not None:
-            state = env.state = initial_states[e]
-
+        state = reset()
         logger.info('Episode %d starting in %s', e, state)
         episode = dataset[i:i+horizon] if collect else dataset
 
