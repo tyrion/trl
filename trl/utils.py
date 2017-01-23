@@ -1,7 +1,15 @@
+import logging
+from contextlib import closing
+
+import h5py
 import numpy as np
 import gym
-
 from gym import spaces
+
+from trl import evaluation
+
+
+logger = logging.getLogger(__name__)
 
 
 def make_grid(x: np.ndarray, y: np.ndarray) -> np.ndarray:
@@ -42,3 +50,18 @@ def discretize_space(space: gym.Space, max=20):
 
 def get_space_dim(space: gym.Space):
     return np.prod(getattr(space, 'shape', 1))
+
+
+def load_dataset(filepath):
+    logger.info('Loading dataset from %s', filepath)
+    with closing(h5py.File(filepath, 'r')) as file:
+        return np.rec.array(file['dataset'][:], copy=False)
+
+
+def save_dataset(dataset, filepath):
+    with closing(h5py.File(filepath)) as file:
+        if 'dataset' in file:
+            del file['dataset']
+        file.create_dataset('dataset', data=dataset)
+        file.flush()
+    logger.info('Saved dataset to %s', filepath)

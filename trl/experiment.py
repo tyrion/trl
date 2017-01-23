@@ -1,7 +1,5 @@
 import logging
 import timeit
-from contextlib import closing
-
 
 import h5py
 import gym
@@ -148,11 +146,7 @@ class Experiment:
 
     def get_dataset(self, path=None):
         if path is not None:
-            logger.info('Loading dataset from %s', path)
-            with closing(h5py.File(path, 'r')) as file:
-                data = file['dataset']
-                dataset = evaluation.allocate_dataset(self.env, data.size)
-                data.read_direct(dataset)
+            dataset = utils.load_dataset(path)
         else:
             logger.info('Collecting training data (episodes: %d, horizon: %d)',
                         self.training_episodes, self.horizon)
@@ -175,12 +169,7 @@ class Experiment:
 
     def save_dataset(self, path, dataset):
         if path is not None:
-            with closing(h5py.File(path)) as file:
-                if 'dataset' in file:
-                    del file['dataset']
-                file.create_dataset('dataset', data=dataset)
-                file.flush()
-            logger.info('Saved dataset to %s', path)
+            utils.save_dataset(dataset, path)
 
     def save_q(self, path, q):
         if path is not None:
