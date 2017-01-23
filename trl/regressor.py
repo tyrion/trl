@@ -3,11 +3,13 @@ from contextlib import contextmanager
 
 import base64
 import copy
+import io
 import logging
 import pickle
 
 import numpy as np
 import h5py
+from sklearn.externals import joblib
 
 
 logger = logging.getLogger(__name__)
@@ -184,3 +186,27 @@ class KerasRegressor(Regressor):
     @classmethod
     def from_config(cls, model, config):
         return cls(model, **config)
+
+
+class SkLearnRegressorMixin(Regressor):
+
+    @property
+    def params(self):
+        return self.get_params()
+
+    @params.setter
+    def params(self, params):
+        return self.set_params(**params)
+
+    def save(self, group):
+        bytes = io.BytesIO()
+        joblib.dump(self, bytes)
+        data = np.frombuffer(bytes.getbuffer(), np.uint8)
+
+        regressor = group.create_dataset(None, data=data)
+        regressor.attrs['class'] = _dumps(self.__class__)
+        return regressor
+
+    @classmethod
+    def load(cls, dataset):
+        return joblib.load(io.BytesIO(dataset[:]))
