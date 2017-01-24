@@ -7,7 +7,6 @@ import warnings
 
 import numpy as np
 
-
 from scipy.optimize import curve_fit
 from sklearn.ensemble import ExtraTreesRegressor
 
@@ -32,7 +31,6 @@ class ExtraTreesRegressor(ExtraTreesRegressor, regressor.SkLearnRegressorMixin):
     pass
 
 
-
 def build_nn(activation='sigmoid', input_dim=2, output_dim=2):
     from keras.models import Sequential
     from keras.layers import Dense
@@ -42,7 +40,7 @@ def build_nn(activation='sigmoid', input_dim=2, output_dim=2):
     model.add(Dense(20, input_dim=input_dim, init='uniform',
                     activation=activation))
     model.add(Dense(output_dim, init='uniform', activation='linear'))
-    model.compile(loss='mse', optimizer='rmsprop', metrics=['accuracy'])
+    model.compile(loss='mse', optimizer='rmsprop')
     return regressor.KerasRegressor(model, input_dim)
 
 
@@ -64,7 +62,7 @@ def build_nn2(activation='sigmoid', input_dim=2, output_dim=2):
 
 
 def build_curve_fit(input_dim=2, output_dim=1):
-    return CurveFitQRegressor(np.array([0,0]))
+    return CurveFitQRegressor(np.array([0.0,0.0]))
 
 
 def build_extra_trees(input_dim=2, output_dim=1):
@@ -80,11 +78,22 @@ def handler(signum, frame):
 class CLIExperiment(Experiment):
 
     def get_q(self, q):
-        r = globals().get('build_{}'.format(q), None)
-        if r is not None:
-            return r(input_dim=self.input_dim, output_dim=1)
+        build = globals().get('build_{}'.format(q), None)
+        if build is None:
+            return super().get_q(q)
 
-        return super().get_q(q)
+        r = build(input_dim=self.input_dim, output_dim=1)
+        if self.use_action_regressor:
+            #reg = Regressor(object)
+            #reg._regressor = r
+            #return regressor.ActionRegressor(reg, self.actions, 5)
+            return regressor.ActionRegressor(r, self.actions)
+
+        return r
+
+    @property
+    def use_action_regressor(self):
+        return False
 
     def get_algorithm(self, **kwargs):
         algo = {
@@ -96,10 +105,9 @@ class CLIExperiment(Experiment):
 
         if 'pbo' in self.algorithm:
             dim = len(self.q.params)
-            kwargs['bo'] = build_nn2(input_dim=dim, output_dim=dim)
+            kwargs['bo'] = build_nn(input_dim=dim, output_dim=dim)
 
         return algo(self, **kwargs)
-
 
 
 if __name__ == '__main__':
@@ -145,7 +153,7 @@ if __name__ == '__main__':
     others.add_argument('--timeit', type=int, default=0, metavar='N',
         help='Benchmark algorithm, using N repetitions')
     others.add_argument('-s', '--seeds', type=int,
-        nargs=2, default=[None, None], metavar='SEED',
+        nargs='+', default=[None, None], metavar='SEED',
         help='specify the random seeds to be used (gym.env, np.random)')
 
     log = others.add_mutually_exclusive_group()
@@ -172,7 +180,7 @@ if __name__ == '__main__':
         'version': 1,
         'formatters': {
             'default': {
-                'format': '%(levelname)5s:%(name)s: %(message)s',
+                'format': '%(asctime)s %(levelname)5s:%(name)s: %(message)s',
             },
         },
         'handlers': {
@@ -199,7 +207,10 @@ if __name__ == '__main__':
     warnings.filterwarnings('ignore', module='pybrain')
 
     args = dict(vars(args))
-    args['np_seed'], args['env_seed'] = args.pop('seeds')
+    seeds = args.pop('seeds')
+    args['np_seed'] = seeds[0]
+    if len(seeds) > 1:
+        args['env_seed'] = seeds[1]
 
     experiment = CLIExperiment.make(**args)
     experiment()

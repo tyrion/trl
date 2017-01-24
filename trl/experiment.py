@@ -4,6 +4,7 @@ import timeit
 import h5py
 import gym
 import numpy as np
+from gym import spaces
 from gym.utils import seeding
 
 from trl import evaluation, regressor, utils
@@ -63,7 +64,7 @@ class Experiment:
         self.env = self.load_env()
         self.np_seed, self.env_seed = self.seed(self.np_seed, self.env_seed)
 
-        logger.info('Initialized env %s', self.env)
+        logger.info('Initialized env %s', self.env_name)
         logger.info('observation space: %s', self.env.observation_space)
         logger.info('action space: %s', self.env.action_space)
         logger.info('Random seeds (np, env): %s %s', self.np_seed, self.env_seed)
@@ -74,7 +75,10 @@ class Experiment:
 
         self.state_dim = utils.get_space_dim(self.env.observation_space)
         self.action_dim = utils.get_space_dim(self.env.action_space)
-        self.input_dim = self.state_dim + self.action_dim
+
+        self.input_dim = self.state_dim
+        if not self.use_action_regressor:
+            self.input_dim += self.action_dim
 
         self.horizon = self.get_horizon()
         self.gamma = self.get_gamma()
@@ -156,7 +160,14 @@ class Experiment:
         return dataset
 
     def get_q(self, path):
-        return regressor.load_regressor(path)
+        r = regressor.load_regressor(path)
+        if self.use_action_regressor:
+            return regressor.ActionRegressor(r, self.actions)
+        return r
+
+    @property
+    def use_action_regressor(self):
+        return not isinstance(self.env.action_space, spaces.Box)
 
     def save(self, path):
         if path is not None:
@@ -186,11 +197,14 @@ class Experiment:
 
     def evaluate(self):
         self.policy = evaluation.QPolicy(self.q, self.actions)
-        evaluation.interact(self.env, self.evaluation_episodes, self.horizon,
-                            self.policy, render=self.render,
-                            initial_states=self.initial_states,
-                            metrics=[evaluation.average,
-                                     evaluation.discounted(self.gamma)])
+        d, info = evaluation.interact(self.env, self.evaluation_episodes,
+            self.horizon, self.policy, render=self.render,
+            initial_states=self.initial_states,
+            metrics=[evaluation.average, evaluation.discounted(self.gamma)])
+
+        logger.info('Summary avg (time: %f, avgJ: %f, discountedJ: %f)',
+                     info.time.mean(), info.average.mean(),
+                     info.discounted.mean())
 
     def save_regressor(self, path, regressor):
         regressor.save_regressor(path, regressor)
