@@ -52,16 +52,19 @@ def get_space_dim(space: gym.Space):
     return np.prod(getattr(space, 'shape', 1))
 
 
-def load_dataset(filepath):
-    logger.info('Loading dataset from %s', filepath)
+def load_dataset(filepath, name='dataset'):
+    logger.info('Loading %s from %s', name, filepath)
     with closing(h5py.File(filepath, 'r')) as file:
-        return np.rec.array(file['dataset'][:], copy=False)
+        dataset = file[name][:]
+        rec = file[name].attrs.get('rec', False)
+        return np.rec.array(dataset, copy=False) if rec else dataset
 
 
-def save_dataset(dataset, filepath):
+def save_dataset(dataset, filepath, name='dataset'):
     with closing(h5py.File(filepath)) as file:
-        if 'dataset' in file:
-            del file['dataset']
-        file.create_dataset('dataset', data=dataset)
+        if name in file:
+            del file[name]
+        file.create_dataset(name, data=dataset)
+        file[name].attrs['rec'] = isinstance(dataset, np.recarray)
         file.flush()
-    logger.info('Saved dataset to %s', filepath)
+    logger.info('Saved %s to %s', name, filepath)
