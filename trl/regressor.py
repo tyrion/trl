@@ -16,9 +16,9 @@ from ifqi.models import actionregressor
 logger = logging.getLogger(__name__)
 
 
-def load_regressor(filepath):
+def load_regressor(filepath, name='regressor'):
     f = h5py.File(filepath, 'r')
-    regressor = f['regressor']
+    regressor = f[name]
     cls = _loads(regressor.attrs['class'])
     try:
         return cls.load(regressor)
@@ -27,13 +27,13 @@ def load_regressor(filepath):
         f.close()
 
 
-def save_regressor(regressor, filepath):
+def save_regressor(regressor, filepath, name='regressor'):
     f = h5py.File(filepath)
     try:
         data = regressor.save(f)
-        if 'regressor' in f:
-            del f['regressor']
-        f['regressor'] = data
+        if name in f:
+            del f[name]
+        f[name] = data
         f.flush()
     finally:
         f.close()
