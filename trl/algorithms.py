@@ -1,4 +1,5 @@
 import logging
+import warnings
 
 import numpy as np
 from numpy.linalg import norm
@@ -7,6 +8,9 @@ from pybrain.optimization import ExactNES
 from . import utils
 from .experiment import Experiment
 
+
+# pybrain is giving a lot of deprecation warnings
+warnings.filterwarnings('ignore', module='pybrain')
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +45,10 @@ class Algorithm:
         for i in range(1, n):
             logger.info('Iteration %d', i)
             self.step(i, budget)
+
+    def save(self, path):
+        """Save algorithm state to file"""
+        pass
 
 
 class FQI(Algorithm):
