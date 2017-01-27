@@ -2,7 +2,6 @@ import logging
 import time
 
 import numpy as np
-from ifqi.envs import get_space_info
 
 from . import utils
 
@@ -28,90 +27,103 @@ class RandomPolicy:
         return self.env.action_space.sample()
 
 
-def allocate_dataset(env, n=1):
-    state_dim, action_dim, reward_dim = get_space_info(env)
+class Interact:
 
-    dataset = np.zeros(n, [
-        ('state', float, state_dim),
-        ('action', float, action_dim),
-        ('reward', float, reward_dim),
-        ('next_state', float, state_dim),
-        ('absorbing', float, 1),
-        ('done', float, 1),
-    ])
-    dataset = np.rec.array(dataset, copy=False)
-    return dataset
+    def __init__(self, env, n=1, horizon=None, policy=None, collect=True,
+                 metrics=(), render=False):
+        if isinstance(n, int):
+            self.n = n
+            self.initial_states = None
+            self.reset = lambda: env.reset()
+        else:
+            self.n = len(n)
+            self.initial_states = n
+            try:
+                env.reset(n[0])
+            except TypeError:
+                logging.warning('The env does not support setting the state. '
+                                'Trying with `env.state = state`')
+                _reset = lambda s: (setattr(self, 'state', s), s)[1]
+            else:
+                _reset = env.reset
+            self.reset = lambda: _reset(n[self.e])
 
+        self.env = env
+        self.state_dim = utils.get_space_dim(self.env.observation_space)
+        self.action_dim = utils.get_space_dim(self.env.action_space)
 
-def _get_reset(env, initial_states=None):
-    if initial_states is None:
-        return env.reset
+        self.horizon = horizon or getattr(env, 'horizon', 100)
+        self.policy = RandomPolicy(env) if policy is None else policy
+        self.collect = collect
+        self.metrics = metrics
+        self.render = render
 
-    try:
-        env.reset(initial_states[0])
-    except TypeError:
-        logging.warning('The env does not support setting the state. '
-                        'Trying with `env.state = state`')
-        env.reset_ = env.reset
-        env.reset = lambda self, s: (setattr(self, 'state', s), s)[1]
+        self.allocate_dataset()
+        self.allocate_trace()
 
-    i = -1
-    def reset():
-        nonlocal i
-        i += 1
-        return env.reset(initial_states[i])
+    def allocate_trace(self):
+        m = self.metrics
+        self.trace = np.recarray((self.n,), [
+            ('state_i', float, self.state_dim),
+            ('state_f', float, self.state_dim),
+            ('time', int)
+        ] + ([('metrics', float, len(m))] if m else []))
 
-    return reset
+    def allocate_dataset(self):
+        n = self.horizon * (self.n if self.collect else 1)
+        self.dataset = np.recarray((n,), [
+            ('state', float, self.state_dim),
+            ('action', float, self.action_dim),
+            ('reward', float),
+            ('next_state', float, self.state_dim),
+            ('absorbing', float),
+            ('done', float),
+        ])
+
+    def __iter__(self):
+        return iter(self.trace)
+
+    def interact(self):
+        i = 0
+        for e in range(self.n):
+            self.e = e
+            trace = self.trace[e]
+            trace.state_i = state = self.reset()
+            episode = (self.dataset[i:i+self.horizon]
+                        if self.collect else self.dataset)
+
+            for t in range(self.horizon):
+                if self.render:
+                    self.env.render()
+                    time.sleep(1 / fps)
+
+                action = self.policy.draw_action(state.reshape(1, -1))
+                next_state, reward, done, _ = self.env.step(action)
+                episode[t] = (state, action, reward, next_state, 0, done)
+                logger.debug(episode[t])
+
+                if done:
+                    episode = episode[:t+1]
+                    break
+                state = next_state
+            episode[t].absorbing = True
+
+            t += 1
+            i += t
+
+            trace.state_f = state
+            trace.time = t
+            if self.metrics:
+                trace.metrics = [m(episode) for m in self.metrics]
+
+            logger.info('Episode %3d: %s', e, trace)
 
 
 def interact(env, n=1, horizon=100, policy=None, collect=False,
-                     metrics=(), render=False, initial_states=None):
-    if policy is None:
-        policy = RandomPolicy(env)
-
-    fps = env.metadata.get('video.frames_per_second') or 100
-    dataset = allocate_dataset(env, horizon * (n if collect else 1))
-
-    info = None
-    if metrics:
-        info = np.recarray((n,),
-                [('time', int)] + [(m.__name__, float) for m in metrics])
-
-    reset = _get_reset(env, initial_states)
-
-    i = 0
-    for e in range(n):
-        state = reset()
-        logger.info('Episode %d starting in %s', e, state)
-        episode = dataset[i:i+horizon] if collect else dataset
-
-        for t in range(horizon):
-            if render:
-                env.render()
-                time.sleep(1 / fps)
-
-            action = policy.draw_action(state.reshape(1, -1))
-            next_state, reward, done, _ = env.step(action)
-            episode[t] = (state, action, reward, next_state, 0, done)
-            logger.debug(episode[t])
-
-            if done:
-                episode = episode[:t+1]
-                break
-            state = next_state
-        episode[t].absorbing = True
-
-        t += 1
-        i += t
-
-        logger.info('Episode %d finished in %d steps.', e, t)
-        if metrics:
-            m = tuple(m(episode) for m in metrics)
-            info[e] = (t,) + m
-            logger.info('Metrics: %s', m)
-
-    return dataset[:i] if collect else None, info
-
+                     metrics=(), render=False):
+    i = Interact(env, n, horizon, policy, collect, metrics, render)
+    i.interact()
+    return i.dataset, i.trace
 
 
 def discounted(gamma=0.9):
