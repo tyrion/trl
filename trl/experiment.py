@@ -1,4 +1,10 @@
+import concurrent.futures
+import copy
+import hashlib
+import json
 import logging
+import os
+import time
 import timeit
 
 import h5py
@@ -13,83 +19,102 @@ from trl import evaluation, regressor, utils
 logger = logging.getLogger(__name__)
 
 
+def init_seed(seed, max_bytes=8):
+    if seed is None:
+        return int.from_bytes(os.urandom(max_bytes), 'big')
+    return int(seed) % 2 ** (8 * max_bytes)
+
+
+def get_seed(seed, stage, max_bytes=8):
+    seed = (seed + stage) % 2 ** (8 * max_bytes)
+    seed = seed.to_bytes(max_bytes, 'big')
+    return hashlib.sha512(seed).digest()[-max_bytes:]
+
+
 class Experiment:
     env_name = None
 
-    horizon = None
-    gamma = None
+    horizon = 100
+    gamma = 0.9
+    initial_states = None
+
+    training_episodes = 100
+    training_iterations = 50
+    evaluation_episodes = 20
     budget = None
+
+    use_action_regressor = False
+
+    algorithm_config = {}
+    algorithm_class = None
 
     np_seed = None
     env_seed = None
 
-    training_episodes = 100
-    training_iterations = 50
-    evaluation_episodes = None
-    initial_states = None
-
-    algorithm = None
-
     timeit = 0
     render = False
 
-    load_path = None
     save_path = None
     dataset_load_path = None
     dataset_save_path = None
     q_load_path = None
     q_save_path = None
+    trace_save_path = None
 
+    def __init__(self, **config):
+        self.config = config
+        self.env_name = config.pop('env_name', self.env_name)
+        self.env = self.get_env()
 
-    def __init__(self, initopts, opts):
-        self._set_options(initopts)
-        self._set_options(opts)
+        for key in ['gamma', 'horizon', 'initial_states']:
+            config.setdefault(key, getattr(self.env, key))
 
-    def _set_options(self, opts):
-        for k, v in opts.items():
-            if hasattr(self, k):
-                setattr(self, k, v)
+        self.algorithm_config = copy.deepcopy(self.algorithm_config)
+        self.algorithm_config.update(config.pop('algorithm_config', {}))
 
-    @classmethod
-    def make(cls, **initopts):
+        self.save_path = path = config.pop('save_path', self.save_path)
+        if self.save_path is not None:
+            for path in ('dataset_save_path', 'q_save_path', 'trace_save_path'):
+                if getattr(self, path, None) is None:
+                    setattr(self, path, self.save_path)
 
-        def experiment(**opts):
-            self = cls(initopts, opts)
-            return self.run()
+        for key, value in config.items():
+            if hasattr(self, key):
+                setattr(self, key, value)
 
-        return experiment
-
-
-    def run(self):
-        self.env = self.load_env()
-        self.np_seed, self.env_seed = self.seed(self.np_seed, self.env_seed)
-
-        logger.info('Initialized env %s', self.env_name)
-        logger.info('observation space: %s', self.env.observation_space)
-        logger.info('action space: %s', self.env.action_space)
-        logger.info('Random seeds (np, env): %s %s', self.np_seed, self.env_seed)
-
-        self.actions = self.get_actions()
-        logger.info('Discretized actions (%d): %s', len(self.actions),
-            np.array2string(self.actions, max_line_width=np.inf))
+        e = self.evaluation_episodes
+        i = len(self.initial_states)
+        if self.initial_states is not None and (e is None or e > i):
+            self.evaluation_episodes = i
 
         self.state_dim = utils.get_space_dim(self.env.observation_space)
         self.action_dim = utils.get_space_dim(self.env.action_space)
+        self.actions = self.get_actions()
 
-        self.input_dim = self.state_dim
-        if not self.use_action_regressor:
-            self.input_dim += self.action_dim
+        self.np_seed = init_seed(self.np_seed)
+        self.env_seed = init_seed(self.env_seed)
 
-        self.horizon = self.get_horizon()
-        self.gamma = self.get_gamma()
+    def get_env(self):
+        return gym.make(self.env_name)
 
-        self.initial_states = i = self.get_initial_states()
-        if self.evaluation_episodes is None:
-            self.evaluation_episodes = len(i) if i is not None else 10
+    def get_actions(self):
+        return utils.discretize_space(self.env.action_space)
 
-        logger.info('Gamma: %f', self.gamma)
+    def run(self):
+        self.log_config()
+        self.dataset = self.get_dataset()
+        self.training_time = None
+        self.trace = None
+        self.summary = None
 
-        self.dataset, self.q = self.load(self.load_path)
+        if self.use_action_regressor:
+            self.input_dim = self.state_dim
+            self.q = regressor.ActionRegressor(self.get_q(), self.actions)
+        else:
+            self.input_dim = self.state_dim + self.action_dim
+            self.q = self.get_q()
+
+        self.algorithm_config = self.get_algorithm_config()
         self.algorithm = self.get_algorithm()
 
         if self.training_iterations <= 0:
@@ -97,114 +122,179 @@ class Experiment:
         else:
             logger.info('Training algorithm (iterations: %d, budget: %s)',
                         self.training_iterations, self.budget)
+            self.seed(1)
             fn = self.benchmark if self.timeit else self.train
-            fn(self.training_iterations, self.budget)
+            fn()
 
         if self.evaluation_episodes <= 0:
             logger.info('Skipping evaluation.')
         else:
             logger.info('Evaluating algorithm (episodes: %d)',
                         self.evaluation_episodes)
+            self.seed(2)
             self.evaluate()
 
-        self.save(self.save_path)
-        return self
+        self.save()
+        return (self.training_time, self.summary)
 
-    def load_env(self):
-        return gym.make(self.env_name)
+    def log_config(self):
+        logger.info('Initialized env %s', self.env_name)
+        logger.info('observation space: %s', self.env.observation_space)
+        logger.info('action space: %s', self.env.action_space)
+        logger.info('Random seeds (np, env): %s %s', self.np_seed, self.env_seed)
+        logger.info('Discretized actions (%d): %s', len(self.actions),
+            np.array2string(self.actions, max_line_width=np.inf))
+        logger.info('Gamma: %f', self.gamma)
 
-    def seed(self, np_seed=None, env_seed=None):
-        # seeding np.random (for pybrain)
-        np_seed = seeding._seed(np_seed)
-        np.random.seed(
-            seeding._int_list_from_bigint(seeding.hash_seed(np_seed)))
-        env_seeds = self.env.seed(env_seed)
-        env_seed = env_seeds[0] if env_seeds else None
-        return np_seed, env_seed
 
-    def get_actions(self):
-        return utils.discretize_space(self.env.action_space)
+    def seed(self, stage):
+        np_seed = get_seed(self.np_seed, stage)
+        env_seed = int.from_bytes(get_seed(self.env_seed, stage), 'big')
 
-    def get_horizon(self):
-        return self.horizon or getattr(self.env, 'horizon', 100)
+        logger.info('Stage %d seeds (np, env): %d %d',
+                stage, int.from_bytes(np_seed, 'big'), env_seed)
 
-    def get_gamma(self):
-        return self.gamma or getattr(self.env, 'gamma', 0.9)
+        np_seed = [int.from_bytes(bytes(b), 'big')
+                    for b in zip(*[iter(np_seed)]*4)]
+        np.random.seed(np_seed)
+        self.env.seed(env_seed)
 
-    def get_initial_states(self):
-        # FIXME allow random
-        return self.initial_states or getattr(self.env, 'initial_states', None)
-
-    def get_algorithm(self):
-        return self.algorithm
-
-    def load(self, path):
-        if path is not None:
-            self.dataset_load_path = path
-            self.q_load_path = path
-
-        dataset = self.get_dataset(self.dataset_load_path)
-        logger.info('Collected %d samples', len(dataset))
-        q = self.get_q(self.q_load_path)
-        return dataset, q
-
-    def get_dataset(self, path=None):
-        if path is not None:
-            dataset = utils.load_dataset(path)
-        else:
+    def get_dataset(self):
+        try:
+            path = self.config['dataset_load_path']
+        except KeyError:
             logger.info('Collecting training data (episodes: %d, horizon: %d)',
                         self.training_episodes, self.horizon)
-            dataset, _ = evaluation.interact(self.env, self.training_episodes,
-                                             self.horizon, collect=True)
+            self.seed(0)
+
+            interaction = evaluation.Interact(self.env, self.training_episodes,
+                                              self.horizon, collect=True)
+            interaction.interact()
             self.env.reset()
-        return dataset
+            return interaction.dataset
+        else:
+            return utils.load_dataset(path)
 
-    def get_q(self, path):
-        r = regressor.load_regressor(path)
-        if self.use_action_regressor:
-            return regressor.ActionRegressor(r, self.actions)
-        return r
+    def get_q(self):
+        return regressor.load_regressor(self.q_load_path, name='q')
 
-    @property
-    def use_action_regressor(self):
-        return not isinstance(self.env.action_space, spaces.Box)
+    def get_algorithm_config(self):
+        # XXX not saving to self, be careful when saving the Experiment.
+        return self.algorithm_config
 
-    def save(self, path):
-        if path is not None:
-            self.dataset_save_path = path
-            self.q_save_path = path
+    def get_algorithm(self):
+        return self.algorithm_class(self, **self.algorithm_config)
 
-        self.save_dataset(self.dataset_save_path, self.dataset)
-        self.save_q(self.q_save_path, self.q)
+    def train(self):
+        self.algorithm.run(self.training_iterations, self.budget)
 
-
-    def save_dataset(self, path, dataset):
-        if path is not None:
-            utils.save_dataset(dataset, path)
-
-    def save_q(self, path, q):
-        if path is not None:
-            regressor.save_regressor(q, path)
-
-    def train(self, iterations, budget=None):
-        return self.algorithm.run(iterations, budget)
-
-    def benchmark(self, repeat, iterations, budget=None):
-        t = timeit.repeat('self.train(iterations, budget)', number=1,
-                          repeat=repeat, globals=locals())
+    def benchmark(self):
+        t = timeit.repeat('self.train()', number=1,
+                          repeat=self.timeit, globals=locals())
+        self.training_time = min(t)
         logger.info('%d iterations, best of %d: %fs',
-                self.training_iterations, repeat, min(t))
+                    self.training_iterations, self.timeit, self.training_time)
 
     def evaluate(self):
         self.policy = evaluation.QPolicy(self.q, self.actions)
-        d, info = evaluation.interact(self.env, self.evaluation_episodes,
-            self.horizon, self.policy, render=self.render,
-            initial_states=self.initial_states,
-            metrics=[evaluation.average, evaluation.discounted(self.gamma)])
 
+        n = self.initial_states
+        n = n if n is not None else self.evaluation_episodes
+
+        metrics = [evaluation.average, evaluation.discounted(self.gamma)]
+        interaction = evaluation.Interact(self.env, n, self.horizon,
+                                          self.policy, self.render, metrics)
+        interaction.interact()
+        self.trace = t = interaction.trace
+        self.summary = np.concatenate((t.time.mean(keepdims=True),
+                                       t.metrics.mean(0)))
         logger.info('Summary avg (time: %f, avgJ: %f, discountedJ: %f)',
-                     info.time.mean(), info.average.mean(),
-                     info.discounted.mean())
+                    *self.summary)
 
-    def save_regressor(self, path, regressor):
-        regressor.save_regressor(path, regressor)
+    def save(self):
+        # TODO save initial_states
+        self.save_dataset(self.dataset_save_path)
+        self.save_q(self.q_save_path)
+        if self.evaluation_episodes > 0:
+            self.save_trace(self.trace_save_path)
+        if self.save_path is not None:
+            self.algorithm.save(self.save_path)
+            self.save_config('{}.json'.format(self.save_path))
+
+    def save_dataset(self, path):
+        if path is not None:
+            utils.save_dataset(self.dataset, path)
+
+    def save_q(self, path):
+        if path is not None:
+            attrs = {'time': self.training_time} if self.timeit else None
+            regressor.save_regressor(self.q, path, 'q', attrs)
+
+    def save_trace(self, path):
+        if path is not None:
+            utils.save_dataset(self.trace, path, 'trace')
+            utils.save_dataset(self.summary, path, 'summary')
+
+    _CONFIG_KEYS = ['env_name', 'horizon', 'gamma', 'training_episodes',
+        'training_iterations', 'evaluation_episodes', 'budget',
+        'use_action_regressor', 'np_seed', 'env_seed',
+        'timeit', 'render', 'dataset_load_path', 'dataset_save_path',
+        'q_load_path', 'q_save_path', 'save_path']
+
+    def get_config(self):
+        config = {k: getattr(self, k) for k in self._CONFIG_KEYS}
+        # FIXME handle algorithm_config and initial_states
+        a = self.algorithm_class
+        config['algorithm_class'] = ':'.join([a.__module__, a.__name__])
+        return config
+
+    def save_config(self, path):
+        with open(path, 'w') as fp:
+            json.dump(self.get_config(), fp, sort_keys=True, indent=4)
+
+
+    @classmethod
+    def run_ith(cls, i, **config):
+        cls._setup(i, **config)
+
+        config = {k: (v.format(i=i)
+                  if k.endswith('path') and isinstance(v, str) else v)
+                  for k, v in config.items()}
+        e = cls(**config)
+        return e.run()
+
+    @classmethod
+    def run_many(cls, n, run=None, **config):
+        if run is None:
+            run = cls.run_ith
+        return cls.run_iter(range(n), run, **config)
+
+    @classmethod
+    def run_iter(cls, iter, run, **config):
+        logger = logging.getLogger('trl')
+        lvl = logger.level
+        logger.setLevel(logging.ERROR)
+
+        with concurrent.futures.ProcessPoolExecutor() as executor:
+            start_time = time.time()
+            futures = {executor.submit(run, x, **config): i
+                       for i, x in enumerate(iter)}
+            results = {}
+            for future in concurrent.futures.as_completed(futures):
+                i = futures[future]
+                try:
+                    results[i] = r = future.result()
+                except Exception as exc:
+                    logging.info('%d generated an exception.' % i, exc_info=1)
+                else:
+                    logging.info('Experiment %s completed: %s', i, r)
+            t = time.time() - start_time
+            logging.info('Finished in %f (avg: %f)', t, t / len(futures))
+
+        logger.setLevel(lvl)
+        return results
+
+
+    @classmethod
+    def _setup(cls, i, **config):
+        logging.disable(logging.INFO)
