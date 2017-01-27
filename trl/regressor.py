@@ -16,6 +16,8 @@ from ifqi.models import actionregressor
 logger = logging.getLogger(__name__)
 
 
+
+# TODO unifiy this with utils.load_dataset?
 def load_regressor(filepath, name='regressor'):
     f = h5py.File(filepath, 'r')
     regressor = f[name]
@@ -27,13 +29,16 @@ def load_regressor(filepath, name='regressor'):
         f.close()
 
 
-def save_regressor(regressor, filepath, name='regressor'):
+def save_regressor(regressor, filepath, name='regressor', attrs=None):
     f = h5py.File(filepath)
     try:
         data = regressor.save(f)
         if name in f:
             del f[name]
         f[name] = data
+        if attrs is not None:
+            for k, v in attrs.items():
+                f[name].attrs[k] = v
         f.flush()
     finally:
         f.close()
