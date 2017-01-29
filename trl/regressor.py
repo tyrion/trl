@@ -10,6 +10,7 @@ import pickle
 import numpy as np
 import h5py
 from sklearn.externals import joblib
+from sklearn import preprocessing
 from ifqi.models import actionregressor
 
 
@@ -165,6 +166,12 @@ class KerasRegressor(Regressor):
         else:
             fit_kwargs = kwargs
 
+        self._pre_x = preprocessing.StandardScaler()
+        x = self._pre_x.fit_transform(x)
+
+        self._pre_y = preprocessing.StandardScaler()
+        y = self._pre_y.fit_transform(y.reshape(-1, 1))
+
         #i = x.reshape(-1, self.input_dim)
         history = self._model.fit(x, y, **fit_kwargs)
         loss = history.history['loss'][-1]
@@ -172,8 +179,19 @@ class KerasRegressor(Regressor):
         return history
 
     def predict(self, x):
+        if hasattr(self, '_pre_x'):
+            x = self._pre_x.transform(x)
+        else:
+            self._pre_x = preprocessing.StandardScaler()
+            x = self._pre_x.fit_transform(x)
+
         x = x.reshape(-1, self.input_dim)
-        return self._model.predict(x)
+        y = self._model.predict(x)
+
+        if hasattr(self, '_pre_y'):
+            return self._pre_y.inverse_transform(y).ravel()
+        else:
+            return y
 
     def model(self, inputs, params=None):
         out = inputs
