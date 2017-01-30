@@ -103,6 +103,8 @@ class Experiment:
     def run(self):
         self.log_config()
         self.dataset = self.get_dataset()
+        self.save_dataset(self.dataset_save_path)
+
         self.training_time = None
         self.trace = None
         self.summary = None
@@ -213,7 +215,6 @@ class Experiment:
 
     def save(self):
         # TODO save initial_states
-        self.save_dataset(self.dataset_save_path)
         self.save_q(self.q_save_path)
         if self.evaluation_episodes > 0:
             self.save_trace(self.trace_save_path)
