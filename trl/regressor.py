@@ -68,6 +68,8 @@ def _patch_h5(group):
 
 
 class Regressor(metaclass=ABCMeta):
+    scaler_x = None
+    scaler_y = None
 
     def __init__(self, params):
         self.params = params
@@ -85,6 +87,15 @@ class Regressor(metaclass=ABCMeta):
 
     def __call__(self, x):
         return self.predict(x)
+
+    def transform(self, x, y):
+        self.scaler_x = s_x = preprocessing.StandardScaler(copy=True)
+        self.scaler_y = s_y = preprocessing.StandardScaler(copy=True)
+
+        # ensure 2d
+        y = y.reshape(len(y), -1)
+
+        return s_x.fit_transform(x), s_y.fit_transform(y)
 
     def save(self, group):
         regressor = group.create_dataset(None, data=self.params)
@@ -117,6 +128,9 @@ class KerasRegressor(Regressor):
         self._params = self._shape = None
         self.fit_kwargs = fit_kwargs
         fit_kwargs.setdefault('verbose', 0)
+
+        self.scaler_x = None
+        self.scaler_y = None
 
     @property
     def params(self):
@@ -157,20 +171,16 @@ class KerasRegressor(Regressor):
     def outputs(self):
         return self._model.outputs
 
+
     def fit(self, x, y, **kwargs):
         self._params = None
+        x, y = self.transform(x, y)
 
         if self.fit_kwargs:
             fit_kwargs = copy.deepcopy(self.fit_kwargs)
             fit_kwargs.update(kwargs)
         else:
             fit_kwargs = kwargs
-
-        self._pre_x = preprocessing.StandardScaler()
-        x = self._pre_x.fit_transform(x)
-
-        self._pre_y = preprocessing.StandardScaler()
-        y = self._pre_y.fit_transform(y.reshape(-1, 1))
 
         #i = x.reshape(-1, self.input_dim)
         history = self._model.fit(x, y, **fit_kwargs)
@@ -179,19 +189,13 @@ class KerasRegressor(Regressor):
         return history
 
     def predict(self, x):
-        if hasattr(self, '_pre_x'):
-            x = self._pre_x.transform(x)
-        else:
-            self._pre_x = preprocessing.StandardScaler()
-            x = self._pre_x.fit_transform(x)
-
         x = x.reshape(-1, self.input_dim)
-        y = self._model.predict(x)
+        x = x if self.scaler_x is None else self.scaler_x.transform(x)
 
-        if hasattr(self, '_pre_y'):
-            return self._pre_y.inverse_transform(y).ravel()
-        else:
-            return y
+        y = self._model.predict(x)
+        y = y if self.scaler_y is None else self.scaler_y.inverse_transform(y)
+
+        return y
 
     def model(self, inputs, params=None):
         out = inputs
