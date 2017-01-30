@@ -140,12 +140,12 @@ class GradPBO(GradientAlgorithm):
         if not independent:
             loss = self.k_loss(t_theta0)
         else:
-            loss = self.loss(t_theta0)[0]
+            loss = self.loss(t_theta0)[1]
             for i in range(1, K):
                 # XXX shouldn't this be 'dmatrix'?
                 theta_i = T.fmatrix('theta_{}'.format(i))
                 t_thetas.append(theta_i)
-                loss += self.loss(theta_i)[0]
+                loss += self.loss(theta_i)[1]
             assert len(t_thetas) == K
 
         self.compile(bo.trainable_weights, [t_d] + t_thetas, loss)
