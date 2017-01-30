@@ -98,15 +98,15 @@ class Interact:
                     time.sleep(1 / fps)
 
                 action = self.policy.draw_action(state.reshape(1, -1))
-                next_state, reward, done, _ = self.env.step(action)
-                episode[t] = (state, action, reward, next_state, 0, done)
+                next_state, reward, absorbing, _ = self.env.step(action)
+                episode[t] = (state, action, reward, next_state, absorbing, 0)
                 logger.debug(episode[t])
 
-                if done:
+                if absorbing:
                     episode = episode[:t+1]
                     break
                 state = next_state
-            episode[t].absorbing = True
+            episode[t].done = True
 
             t += 1
             i += t
