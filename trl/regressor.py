@@ -95,7 +95,6 @@ class Regressor(metaclass=ABCMeta):
     count_params = lambda self: len(self.params)
 
 
-
 # XXX dirty hack, monkey patching h5py
 @contextmanager
 def _patch_h5(group):
@@ -112,7 +111,7 @@ def _patch_h5(group):
 class KerasRegressor(Regressor):
 
     def __init__(self, model, input_dim=2, **fit_kwargs):
-        self.model = model
+        self._model = model
         self.input_dim = input_dim
         self._params = self._shape = None
         self.fit_kwargs = fit_kwargs
@@ -121,7 +120,7 @@ class KerasRegressor(Regressor):
     @property
     def params(self):
         if self._params is None:
-            weights = self.model.get_weights()
+            weights = self._model.get_weights()
             self._shapes = [w.shape for w in weights]
 
             self._params = np.concatenate([w.ravel() for w in weights])
@@ -142,8 +141,20 @@ class KerasRegressor(Regressor):
             result.append(w)
             i += n
 
-        self.model.set_weights(result)
+        self._model.set_weights(result)
         self._params = weights
+
+    @property
+    def trainable_weights(self):
+        return self._model.trainable_weights
+
+    @property
+    def inputs(self):
+        return self._model.inputs
+
+    @property
+    def outputs(self):
+        return self._model.outputs
 
     def fit(self, x, y, **kwargs):
         self._params = None
@@ -155,14 +166,20 @@ class KerasRegressor(Regressor):
             fit_kwargs = kwargs
 
         #i = x.reshape(-1, self.input_dim)
-        history = self.model.fit(x, y, **fit_kwargs)
+        history = self._model.fit(x, y, **fit_kwargs)
         loss = history.history['loss'][-1]
         logger.info('Epochs: %d, loss: %f', len(history.epoch), loss)
         return history
 
     def predict(self, x):
         x = x.reshape(-1, self.input_dim)
-        return self.model.predict(x)
+        return self._model.predict(x)
+
+    def model(self, inputs, params=None):
+        out = inputs
+        for el in self._model.flattened_layers:
+            out = el(out)
+        return out
 
     def get_config(self):
         config = copy.deepcopy(self.fit_kwargs)
@@ -175,7 +192,7 @@ class KerasRegressor(Regressor):
         group.attrs['config'] = _dumps(self.get_config())
 
         with _patch_h5(group):
-            self.model.save('whatever', overwrite=True)
+            self._model.save('whatever', overwrite=True)
 
         return group
 

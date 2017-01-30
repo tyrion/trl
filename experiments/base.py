@@ -37,18 +37,53 @@ LOGGING = {
     },
 }
 
+import theano
+from theano import tensor as T
 
 class CurveFitQRegressor(regressor.Regressor):
+
+    def __init__(self, params):
+        self._params = p = theano.shared(params, 'params')
+        self.sa = sa = T.dmatrix('sa')
+        self.s, self.a = sa[:, 0], sa[:, 1]
+        self.s.name = 's'
+        self.a.name = 'a'
+        self.j = self.model(sa, p)
+        self.inputs = [sa]
+        self.outputs = [self.j]
+        # TODO check if it is faster like this, or with normal predict
+        self.predict = theano.function([sa], self.j)
+
+    @property
+    def trainable_weights(self):
+        print('trainable-weights')
+        return [self._params]
+
+    @property
+    def params(self):
+        return self._params.get_value()
+
+    @params.setter
+    def params(self, params):
+        self._params.set_value(params)
 
     def fit(self, x, y):
         self.params, pcov = curve_fit(self.Q, x, y, p0=self.params-0.0001)
 
     def Q(self, sa, b, k):
         s, a = sa[:, 0], sa[:, 1]
+        return self.model(s, a, [b, k])
+
+    def model(self, sa, theta):
+        s = sa[:, 0]
+        a = sa[:, 1]
+        b = theta[0]
+        k = theta[1]
         return - b * b * s * a - 0.5 * k * a * a - 0.4* k * s * s
+        #return k * s
 
     def predict(self, x):
-        return self.Q(x, *self.params)
+        pass
 
 
 class ExtraTreesRegressor(ExtraTreesRegressor, regressor.SkLearnRegressorMixin):
@@ -86,7 +121,7 @@ def build_nn2(input_dim=2, output_dim=2, activation='sigmoid'):
 
 
 def build_curve_fit(input_dim=2, output_dim=1):
-    return CurveFitQRegressor(np.array([0.0,0.0]))
+    return CurveFitQRegressor(np.array([0.0,0.0], dtype=theano.config.floatX))
 
 
 def build_extra_trees(input_dim=2, output_dim=1):
