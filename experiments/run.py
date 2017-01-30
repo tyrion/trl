@@ -8,7 +8,8 @@ import warnings
 import base
 
 
-from trl import algorithms, ifqi
+from trl import algorithms
+from trl.algorithms import ifqi
 
 
 if __name__ == '__main__':
@@ -18,7 +19,7 @@ if __name__ == '__main__':
     parser.add_argument('env_name',
         help='The environment to use. Either from ifqi or gym.')
     parser.add_argument('algorithm',
-        choices=['fqi', 'pbo', 'ifqi_fqi', 'ifqi_pbo'],
+        choices=['fqi', 'pbo', 'ifqi_fqi', 'ifqi_pbo', 'gradfqi', 'gradpbo'],
         help='The algorithm to run')
     parser.add_argument('-n', '--training-iterations',
         metavar='N', type=int, default=50,
@@ -96,6 +97,8 @@ if __name__ == '__main__':
         'pbo': algorithms.NESPBO,
         'ifqi_fqi': ifqi.FQI,
         'ifqi_pbo': ifqi.PBO,
+        'gradfqi': algorithms.GradFQI,
+        'gradpbo': algorithms.GradPBO,
     }[args.pop('algorithm')]
 
     args = {k:v for k,v in args.items() if v is not None}

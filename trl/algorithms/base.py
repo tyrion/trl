@@ -5,14 +5,14 @@ import numpy as np
 from numpy.linalg import norm
 from pybrain.optimization import ExactNES
 
-from . import utils
-from .experiment import Experiment
+from .. import utils
+from ..experiment import Experiment
 
 
 # pybrain is giving a lot of deprecation warnings
 warnings.filterwarnings('ignore', module='pybrain')
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('trl.algorithms')
 
 
 class Algorithm:
@@ -25,15 +25,15 @@ class Algorithm:
         self.S1A = utils.make_grid(self.dataset.next_state, self.actions)
         self.SA = utils.rec_to_array(self.dataset[['state', 'action']])
 
-    def max_q(self, q):
+    def max_q(self):
         n = len(self.dataset)
         n_actions = len(self.actions)
 
-        y = q(self.S1A).reshape((n, n_actions))
+        y = self.q(self.S1A).reshape((n, n_actions))
 
         # XXX why? we could avoid to compute the absorbing states altogether.
         y = y * (1 - self.dataset.absorbing)[:, np.newaxis]
-        amax = np.argmax(y, axis=1)
+        #amax = np.argmax(y, axis=1)
         return y.max(axis=1)
 
     def first_step(self, budget=None):
@@ -58,7 +58,7 @@ class FQI(Algorithm):
         self.q.fit(self.SA, self.dataset.reward)
 
     def step(self, i=0, budget=None):
-        y = self.dataset.reward + self.gamma * self.max_q(self.q)
+        y = self.dataset.reward + self.gamma * self.max_q()
         self.q.fit(self.SA, y)
         #log(i, y, self.params)
 
@@ -74,7 +74,7 @@ class PBO(Algorithm):
         with self.bo.save_params(omega), self.q.save_params():
             loss = 0
             for k in range(self.K):
-                q0 = self.max_q(self.q)
+                q0 = self.max_q()
 
                 self.q.params = self.bo.predict_one(self.q.params)
                 q1 = self.q(self.SA)

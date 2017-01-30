@@ -4,8 +4,8 @@ from ifqi.algorithms import fqi
 from ifqi.algorithms.pbo import pbo
 from ifqi.models.regressor import Regressor
 
-from trl.algorithms import Algorithm
-from trl import utils
+from .base import Algorithm
+from .. import utils
 
 
 class FQI(Algorithm):
@@ -43,7 +43,7 @@ class PBO(Algorithm):
         r._regressor = self.q
 
         self.pbo = pbo.PBO(estimator=r,
-            estimator_rho=bo.model,
+            estimator_rho=bo._model,
             state_dim=experiment.state_dim,
             action_dim=experiment.action_dim,
             discrete_actions=self.actions,

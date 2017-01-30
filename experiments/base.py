@@ -5,10 +5,13 @@ import logging.config
 os.environ.setdefault('KERAS_BACKEND', 'theano')
 
 import numpy as np
+import theano
+from theano import tensor as T
 from scipy.optimize import curve_fit
 from sklearn.ensemble import ExtraTreesRegressor
 
-from trl import algorithms, ifqi, regressor
+from trl import algorithms, regressor
+from trl.algorithms import ifqi
 from trl.experiment import Experiment
 
 
@@ -37,13 +40,11 @@ LOGGING = {
     },
 }
 
-import theano
-from theano import tensor as T
 
 class CurveFitQRegressor(regressor.Regressor):
 
     def __init__(self, params):
-        self._params = p = theano.shared(params, 'params')
+        self._params = p = theano.shared(params, 'params', allow_downcast=True)
         self.sa = sa = T.dmatrix('sa')
         self.s, self.a = sa[:, 0], sa[:, 1]
         self.s.name = 's'
@@ -56,7 +57,6 @@ class CurveFitQRegressor(regressor.Regressor):
 
     @property
     def trainable_weights(self):
-        print('trainable-weights')
         return [self._params]
 
     @property
@@ -71,8 +71,7 @@ class CurveFitQRegressor(regressor.Regressor):
         self.params, pcov = curve_fit(self.Q, x, y, p0=self.params-0.0001)
 
     def Q(self, sa, b, k):
-        s, a = sa[:, 0], sa[:, 1]
-        return self.model(s, a, [b, k])
+        return self.model(sa, [b, k])
 
     def model(self, sa, theta):
         s = sa[:, 0]
@@ -80,7 +79,6 @@ class CurveFitQRegressor(regressor.Regressor):
         b = theta[0]
         k = theta[1]
         return - b * b * s * a - 0.5 * k * a * a - 0.4* k * s * s
-        #return k * s
 
     def predict(self, x):
         pass
@@ -145,7 +143,7 @@ class CLIExperiment(Experiment):
         return build(input_dim=self.input_dim, output_dim=1)
 
     def get_algorithm_config(self):
-        if self.algorithm_class in (algorithms.NESPBO, ifqi.PBO):
+        if self.algorithm_class in (algorithms.NESPBO, ifqi.PBO, algorithms.GradPBO):
             dim = len(self.q.params)
             self.algorithm_config['bo'] = build_nn(input_dim=dim, output_dim=dim)
         return self.algorithm_config
