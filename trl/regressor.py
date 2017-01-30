@@ -16,7 +16,6 @@ from ifqi.models import actionregressor
 logger = logging.getLogger(__name__)
 
 
-
 # TODO unifiy this with utils.load_dataset?
 def load_regressor(filepath, name='regressor'):
     f = h5py.File(filepath, 'r')
@@ -49,8 +48,22 @@ def save_regressor(regressor, filepath, name='regressor', attrs=None):
 def _dumps(object):
     return base64.b64encode(pickle.dumps(object))
 
+
 def _loads(object):
     return pickle.loads(base64.b64decode(object))
+
+
+# XXX dirty hack, monkey patching h5py
+@contextmanager
+def _patch_h5(group):
+    group.flush = lambda: None
+    group.close = lambda: None
+    File = h5py.File
+    h5py.File = lambda *a, **kw: group
+    yield
+    h5py.File = File
+    del group.flush
+    del group.close
 
 
 class Regressor(metaclass=ABCMeta):
@@ -93,19 +106,6 @@ class Regressor(metaclass=ABCMeta):
     get_weights = lambda self: self.params
     set_weights = lambda self, w: setattr(self, 'params', w)
     count_params = lambda self: len(self.params)
-
-
-# XXX dirty hack, monkey patching h5py
-@contextmanager
-def _patch_h5(group):
-    group.flush = lambda: None
-    group.close = lambda: None
-    File = h5py.File
-    h5py.File = lambda *a, **kw: group
-    yield
-    h5py.File = File
-    del group.flush
-    del group.close
 
 
 class KerasRegressor(Regressor):
