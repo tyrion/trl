@@ -8,7 +8,7 @@ from keras.engine.training import slice_X, batch_shuffle, make_batches
 from keras import optimizers
 
 from .base import Algorithm
-from .. import utils
+from .. import regressor, utils
 
 
 ZERO = np.array(0, dtype='float64')
@@ -206,3 +206,6 @@ class GradPBO(GradientAlgorithm):
         super().run(n, budget)
         # logging.info('Learned theta: %s', self.theta0[0])
         self.q.params = self.theta0[0]
+
+    def save(self, path):
+        regressor.save_regressor(self.bo, path, 'bo')

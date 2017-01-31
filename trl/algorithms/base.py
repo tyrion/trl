@@ -5,7 +5,7 @@ import numpy as np
 from numpy.linalg import norm
 from pybrain.optimization import ExactNES
 
-from .. import utils
+from .. import regressor, utils
 from ..experiment import Experiment
 
 
@@ -82,6 +82,9 @@ class PBO(Algorithm):
         logger.debug('loss: %7d | q: %s', loss, self.q.params)
         #np.array2string(omega, max_line_width=np.inf))
         return loss
+
+    def save(self, path):
+        regressor.save_regressor(self.bo, path, 'bo')
 
 
 class LoggingNES(ExactNES):
