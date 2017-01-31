@@ -116,15 +116,15 @@ class Experiment:
             self.input_dim = self.state_dim + self.action_dim
             self.q = self.get_q()
 
-        self.algorithm_config = self.get_algorithm_config()
-        self.algorithm = self.get_algorithm()
 
         if self.training_iterations <= 0:
             logger.info('Skipping training.')
         else:
+            self.seed(1)
+            self.algorithm_config = self.get_algorithm_config()
+            self.algorithm = self.get_algorithm()
             logger.info('Training algorithm (iterations: %d, budget: %s)',
                         self.training_iterations, self.budget)
-            self.seed(1)
             fn = self.benchmark if self.timeit else self.train
             fn()
 
@@ -219,7 +219,8 @@ class Experiment:
         if self.evaluation_episodes > 0:
             self.save_trace(self.trace_save_path)
         if self.save_path is not None:
-            self.algorithm.save(self.save_path)
+            if self.training_iterations > 0:
+                self.algorithm.save(self.save_path)
             self.save_config('{}.json'.format(self.save_path))
 
     def save_dataset(self, path):
