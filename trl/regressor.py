@@ -25,7 +25,7 @@ def load_regressor(filepath, name='regressor'):
     try:
         return cls.load(regressor)
     finally:
-        logger.info('Loaded regressor from %s', filepath)
+        logger.info('Loaded regressor %r from %s', name, filepath)
         f.close()
 
 
@@ -43,7 +43,7 @@ def save_regressor(regressor, filepath, name='regressor', attrs=None):
     finally:
         f.close()
 
-    logger.info('Saved regressor to %s', filepath)
+    logger.info('Saved regressor %r to %s', name, filepath)
 
 
 def _dumps(object):
