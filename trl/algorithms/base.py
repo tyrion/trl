@@ -99,8 +99,11 @@ class NESPBO(PBO):
 
     def __init__(self, experiment, bo, K=1, **nes_args):
         super().__init__(experiment, bo, K)
+        nes_args.setdefault('importanceMixing', False)
+        nes_args.setdefault('learningRate', 0.1)
+        nes_args.setdefault('batchSize', 10)
         self.optimizer = LoggingNES(self.loss, self.bo.params, minimize=True,
-                                    importanceMixing=False, **nes_args)
+                                    **nes_args)
 
     def step(self, i=0, budget=None):
         params, loss = self.optimizer.learn(budget)
