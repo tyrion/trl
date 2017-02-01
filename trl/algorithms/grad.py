@@ -148,7 +148,9 @@ class GradPBO(GradientAlgorithm):
                 loss += self.t_loss(theta_i)[1]
             assert len(t_thetas) == K
 
-        self.compile(bo.trainable_weights, [t_d] + t_thetas, loss)
+        self.t_input = [t_d] + t_thetas
+        self.t_output = loss
+        self.compile(bo.trainable_weights, self.t_input, loss)
 
         # Variables needed during execution
         self.data = [utils.rec_to_array(self.dataset)]

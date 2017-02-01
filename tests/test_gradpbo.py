@@ -2,6 +2,7 @@ import os
 
 os.environ.setdefault('KERAS_BACKEND', 'theano')
 
+import pytest
 import theano
 import theano.tensor as T
 import numpy as np
@@ -52,14 +53,14 @@ def empirical_bop(e: Experiment, rho, theta0, norm_value=2, incremental=False):
 
 class LBPO(regressor.Regressor):
     def __init__(self, rho):
-        self.rho = theano.shared(value=rho, borrow=True, name='rho')
+        self.rho = theano.shared(value=rho, name='rho')
         self.theta = T.matrix()
         self.outputs = [T.dot(self.theta, self.rho)]
         self.inputs = [self.theta]
 
         # do not update rho
-        # self.trainable_weights = [self.rho]
-        self.trainable_weights = []
+        self.trainable_weights = [self.rho]
+        #self.trainable_weights = []
         self.predict = theano.function(self.inputs, self.outputs[0])
 
     def model(self, theta):
@@ -112,7 +113,7 @@ class CurveFitQRegressor(regressor.Regressor):
 dataset_arr = np.array([
     [1., 0., 2., -1., 0., 0.],
     [2., 3., 3., -5., 0., 0.],
-    [3., 4., 4., 0., 0., 0.],
+    [3., 4., 4., +0., 0., 0.],
 ], dtype=float)
 
 dataset_rec = np.rec.array(dataset_arr.ravel(), copy=False, dtype=[
@@ -120,21 +121,20 @@ dataset_rec = np.rec.array(dataset_arr.ravel(), copy=False, dtype=[
     ('next_state', float), ('absorbing', float), ('done', float)])
 
 
-def test_gradpbo():
-    rho0 = np.array([[1., 2.], [0., 3.]])
-    theta0 = np.array([[2., 0.2]])
-    theta0_0 = theta0[0]
-    bo = LBPO(rho0)
+rho0 = np.array([[1., 2.], [0., 3.]], dtype='f')
+theta0 = np.array([[2., 0.2]], dtype='f')
 
-    norm_value = 2
-    incremental = True
+
+@pytest.fixture(params=[(2, False), (2, True)])
+def experiment(request):
+    norm_value, incremental = request.param
 
     e = Experiment(
         env_name='LQG1D-v0',
         training_episodes=10,
         algorithm_class=algorithms.GradPBO,
         algorithm_config={
-            'bo': bo,
+            'bo': LBPO(rho0),
             'K': 1,
             'optimizer': 'adam',
             'batch_size': 10,
@@ -150,17 +150,33 @@ def test_gradpbo():
 
     # e.dataset = e.get_dataset()
     e.dataset = dataset_rec
-    e.q = CurveFitQRegressor(theta0_0)
+    e.q = CurveFitQRegressor(theta0[0])
     e.seed(1)
-    gradpbo = e.get_algorithm()
+    e.algorithm = e.get_algorithm()
+    return e
+
+
+def test_bellman_error(experiment):
+    e = experiment
+    pbo = e.algorithm
 
     # dataset_arr = utils.rec_to_array(e.dataset)
-    err0 = gradpbo.train_f(dataset_arr, theta0)
-    err1 = empirical_bop(e, rho0, theta0,
-                         norm_value=norm_value, incremental=incremental)
+    err0 = pbo.train_f(dataset_arr, theta0)
+    err1 = empirical_bop(e, rho0, theta0, pbo.norm_value, pbo.incremental)
 
-    assert np.allclose(err0, err1)
+    assert np.allclose(err0, err1, 0.1)
 
 
-if __name__ == "__main__":
-    test_gradpbo()
+def test_grad(experiment):
+    e = experiment
+    pbo = e.algorithm
+
+    t_grad = T.grad(pbo.t_output, pbo.bo.trainable_weights)
+    grad = theano.function(pbo.t_input, t_grad)
+    r0 = grad(dataset_arr, theta0)
+
+    eps = np.sqrt(np.finfo(float).eps)
+    f = lambda x: empirical_bop(e, x, theta0)
+    r1 = optimize.approx_fprime(rho0, f, eps)
+
+    assert np.allclose(r0, r1)
