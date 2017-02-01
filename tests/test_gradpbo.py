@@ -1,4 +1,5 @@
 import os
+
 os.environ.setdefault('KERAS_BACKEND', 'theano')
 
 import theano
@@ -19,14 +20,14 @@ def bellmanop(rho, theta):
 def lqr_reg(s, a, theta):
     b = theta[0]
     k = theta[1]
-    return - b * b * s * a - 0.5 * k * a * a - 0.4* k * s * s
+    return - b * b * s * a - 0.5 * k * a * a - 0.4 * k * s * s
 
 
 def np_norm(x, p=2):
     return np.max(x ** 2) if p == np.inf else np.mean(x ** p) ** (1 / p)
 
 
-def empirical_bop(e: Experiment, rho, theta0, norm_value=2):
+def empirical_bop(e: Experiment, rho, theta0, norm_value=2, incremental=False):
     s = e.dataset.state
     a = e.dataset.action
     r = e.dataset.reward
@@ -34,7 +35,10 @@ def empirical_bop(e: Experiment, rho, theta0, norm_value=2):
     n = len(s)
 
     theta0_0 = theta0[0]
-    theta1_0 = bellmanop(rho, theta0)[0]
+    if incremental:
+        theta1_0 = theta0_0 + bellmanop(rho, theta0)[0]
+    else:
+        theta1_0 = bellmanop(rho, theta0)[0]
     qnop = lqr_reg(s, a, theta1_0)
     bop = -np.ones(n) * np.inf
     for i in range(n):
@@ -69,7 +73,6 @@ class LBPO(regressor.Regressor):
 
 
 class CurveFitQRegressor(regressor.Regressor):
-
     def __init__(self, params):
         self._params = p = theano.shared(params, 'params', allow_downcast=True)
         self.sa = sa = T.dmatrix('sa')
@@ -92,7 +95,7 @@ class CurveFitQRegressor(regressor.Regressor):
         self._params.set_value(params)
 
     def fit(self, x, y):
-        self.params, pcov = curve_fit(self.Q, x, y, p0=self.params-0.0001)
+        self.params, pcov = curve_fit(self.Q, x, y, p0=self.params - 0.0001)
 
     def Q(self, sa, b, k):
         return self.model(sa, [b, k])
@@ -106,11 +109,10 @@ class CurveFitQRegressor(regressor.Regressor):
         pass
 
 
-
 dataset_arr = np.array([
     [1., 0., 2., -1., 0., 0.],
     [2., 3., 3., -5., 0., 0.],
-    [3., 4., 4.,  0., 0., 0.],
+    [3., 4., 4., 0., 0., 0.],
 ], dtype=float)
 
 dataset_rec = np.rec.array(dataset_arr.ravel(), copy=False, dtype=[
@@ -119,11 +121,13 @@ dataset_rec = np.rec.array(dataset_arr.ravel(), copy=False, dtype=[
 
 
 def test_gradpbo():
-
     rho0 = np.array([[1., 2.], [0., 3.]])
     theta0 = np.array([[2., 0.2]])
     theta0_0 = theta0[0]
     bo = LBPO(rho0)
+
+    norm_value = 2
+    incremental = True
 
     e = Experiment(
         env_name='LQG1D-v0',
@@ -134,24 +138,29 @@ def test_gradpbo():
             'K': 1,
             'optimizer': 'adam',
             'batch_size': 10,
-            'norm_value': 2,
+            'norm_value': norm_value,
             'update_index': 10,
             'update_steps': None,
-            'incremental': False,
+            'incremental': incremental,
             'independent': False,
         },
         np_seed=None,
         env_seed=None,
     )
 
-    #e.dataset = e.get_dataset()
+    # e.dataset = e.get_dataset()
     e.dataset = dataset_rec
     e.q = CurveFitQRegressor(theta0_0)
     e.seed(1)
     gradpbo = e.get_algorithm()
 
-    #dataset_arr = utils.rec_to_array(e.dataset)
+    # dataset_arr = utils.rec_to_array(e.dataset)
     err0 = gradpbo.train_f(dataset_arr, theta0)
-    err1 = empirical_bop(e, rho0, theta0)
+    err1 = empirical_bop(e, rho0, theta0,
+                         norm_value=norm_value, incremental=incremental)
 
     assert np.allclose(err0, err1)
+
+
+if __name__ == "__main__":
+    test_gradpbo()
