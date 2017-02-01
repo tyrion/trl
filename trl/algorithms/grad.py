@@ -138,14 +138,14 @@ class GradPBO(GradientAlgorithm):
         t_thetas = [t_theta0]
 
         if not independent:
-            loss = self.k_loss(t_theta0)
+            loss = self.t_k_loss(t_theta0)
         else:
-            loss = self.loss(t_theta0)[1]
+            loss = self.t_loss(t_theta0)[1]
             for i in range(1, K):
                 # XXX shouldn't this be 'dmatrix'?
                 theta_i = T.fmatrix('theta_{}'.format(i))
                 t_thetas.append(theta_i)
-                loss += self.loss(theta_i)[1]
+                loss += self.t_loss(theta_i)[1]
             assert len(t_thetas) == K
 
         self.compile(bo.trainable_weights, [t_d] + t_thetas, loss)
@@ -168,7 +168,7 @@ class GradPBO(GradientAlgorithm):
     #     maxq, _ = theano.scan(self.max_q, [self.t_s_next],
     #                           non_sequences=[theta0_0])
 
-    def max_q(self, theta):
+    def t_max_q(self, theta):
         n = self.t_dataset.shape[0]
         n_actions = len(self.actions)
 
@@ -177,7 +177,7 @@ class GradPBO(GradientAlgorithm):
 
         return y.max(axis=1)
 
-    def loss(self, theta0, loss=ZERO):
+    def t_loss(self, theta0, loss=ZERO):
         theta1 = self.bo.model(theta0)
         if self.incremental:
             theta1 += theta0
@@ -187,12 +187,12 @@ class GradPBO(GradientAlgorithm):
 
         qpbo = self.q.model(self.t_sa, theta1_0)
 
-        maxq = self.max_q(theta0_0)
+        maxq = self.t_max_q(theta0_0)
         v = qpbo - self.t_r - self.gamma * maxq
         return theta1, loss + t_pnorm(v, self.norm_value)
 
-    def k_loss(self, theta0):
-        (_, loss), _ = theano.scan(self.loss, outputs_info=[theta0, ZERO],
+    def t_k_loss(self, theta0):
+        (_, loss), _ = theano.scan(self.t_loss, outputs_info=[theta0, ZERO],
                                    n_steps=self.K)
         return loss[-1]
 
