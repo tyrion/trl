@@ -15,13 +15,18 @@ from trl.experiment import Experiment
 def bellmanop(rho, theta):
     return theta.dot(rho)
 
+
 def lqr_reg(s, a, theta):
     b = theta[0]
     k = theta[1]
     return - b * b * s * a - 0.5 * k * a * a - 0.4* k * s * s
 
 
-def empirical_bop(e: Experiment, rho, theta0):
+def np_norm(x, p=2):
+    return np.max(x ** 2) if p == np.inf else np.mean(x ** p) ** (1 / p)
+
+
+def empirical_bop(e: Experiment, rho, theta0, norm_value=2):
     s = e.dataset.state
     a = e.dataset.action
     r = e.dataset.reward
@@ -38,7 +43,7 @@ def empirical_bop(e: Experiment, rho, theta0):
             if qv > bop[i]:
                 bop[i] = qv
     v = qnop - r - e.gamma * bop
-    return 0.5 * np.mean(v ** 2)
+    return np_norm(v, norm_value)
 
 
 class LBPO(regressor.Regressor):
