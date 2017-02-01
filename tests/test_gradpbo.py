@@ -15,6 +15,8 @@ from trl.experiment import Experiment
 
 
 def bellmanop(rho, theta):
+    if isinstance(rho, (np.ndarray)):
+        rho = np.reshape(rho, (2, -1))
     return theta.dot(rho)
 
 
@@ -25,7 +27,7 @@ def lqr_reg(s, a, theta):
 
 
 def np_norm(x, p=2):
-    return np.max(x ** 2) if p == np.inf else np.mean(x ** p) ** (1 / p)
+    return np.max(x ** 2) if p == np.inf else np.mean(x ** p) ** (1.0 / p)
 
 
 def empirical_bop(e: Experiment, rho, theta0, norm_value=2, incremental=False):
@@ -111,23 +113,23 @@ class CurveFitQRegressor(regressor.Regressor):
 
 
 dataset_arr = np.array([
-    [1., 0., 2., -1., 0., 0.],
-    [2., 3., 3., -5., 0., 0.],
-    [3., 4., 4., +0., 0., 0.],
-], dtype=float)
+    [1., 0., -1., 2., 0., 0.],
+    [2., 3., -5., 3., 0., 0.],
+    [3., 4., +0., 4., 0., 0.],
+], dtype="float")
 
 dataset_rec = np.rec.array(dataset_arr.ravel(), copy=False, dtype=[
-    ('state', float), ('action', float), ('reward', float),
-    ('next_state', float), ('absorbing', float), ('done', float)])
+    ('state', "float"), ('action', "float"), ('reward', "float"),
+    ('next_state', "float"), ('absorbing', "float"), ('done', "float")])
 
 
-rho0 = np.array([[1., 2.], [0., 3.]], dtype='f')
-theta0 = np.array([[2., 0.2]], dtype='f')
+rho0 = np.array([[1., 2.], [0., 3.]], dtype=theano.config.floatX)
+theta0 = np.array([[2., 0.2]], dtype=theano.config.floatX)
 
 
 @pytest.fixture(params=[(2, False), (2, True)])
 def experiment(request):
-    norm_value, incremental = request.param
+    norm_value, incremental = request
 
     e = Experiment(
         env_name='LQG1D-v0',
@@ -147,6 +149,7 @@ def experiment(request):
         np_seed=None,
         env_seed=None,
     )
+    e.actions = np.array([1, 2, 3]).reshape(-1, 1)
 
     # e.dataset = e.get_dataset()
     e.dataset = dataset_rec
@@ -164,7 +167,8 @@ def test_bellman_error(experiment):
     err0 = pbo.train_f(dataset_arr, theta0)
     err1 = empirical_bop(e, rho0, theta0, pbo.norm_value, pbo.incremental)
 
-    assert np.allclose(err0, err1, 0.1)
+    print(err0, err1)
+    assert np.allclose(err0, err1), "{}, {}".format(err0, err1)
 
 
 def test_grad(experiment):
@@ -176,7 +180,14 @@ def test_grad(experiment):
     r0 = grad(dataset_arr, theta0)
 
     eps = np.sqrt(np.finfo(float).eps)
-    f = lambda x: empirical_bop(e, x, theta0)
-    r1 = optimize.approx_fprime(rho0, f, eps)
+    f = lambda x: empirical_bop(e, x, theta0, pbo.norm_value, pbo.incremental)
+    r1 = optimize.approx_fprime(rho0.ravel(), f, eps).reshape(rho0.shape)
+    print(r1)
 
-    assert np.allclose(r0, r1)
+    assert np.allclose(r0, r1), "{}, {}".format(r0, r1)
+
+
+# if __name__ == "__main__":
+#     ex = experiment()
+#     test_bellman_error(ex)
+#     test_grad(ex)
