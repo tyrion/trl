@@ -10,8 +10,7 @@ from keras import optimizers
 from .base import Algorithm
 from .. import regressor, utils
 
-
-ZERO = np.array(0, dtype='float64')
+ZERO = np.array(0, dtype=theano.config.floatX)
 logger = logging.getLogger('trl.algorithms')
 
 
@@ -45,7 +44,6 @@ def t_make_grid(x, y):
 
 
 class GradientAlgorithm(Algorithm):
-
     def __init__(self, experiment, optimizer='adam', batch_size=10,
                  norm_value=2, update_index=1):
         super().__init__(experiment)
@@ -67,7 +65,7 @@ class GradientAlgorithm(Algorithm):
         o = self.optimizer
         updates = o.get_updates(trainable_weights, {}, loss)
         self.train_f = theano.function(inputs, [loss], updates=updates,
-                                       name='train', allow_input_downcast=True)
+                                       name='train')
         logger.info('Compiled train_f in %fs', time.time() - start_time)
 
     def step(self, i=0, budget=None):
@@ -84,24 +82,22 @@ class GradientAlgorithm(Algorithm):
 
 
 class GradFQI(GradientAlgorithm):
-
     def __init__(self, experiment, optimizer='adam', batch_size=10,
                  norm_value=2, update_index=1):
         super().__init__(experiment, optimizer, batch_size, norm_value, update_index)
 
-        self.t_y = t_y = T.dvector('y')
+        self.t_y = t_y = T.vector('y', dtype=theano.config.floatX)
         loss = t_pnorm(self.q.outputs[0] - t_y, norm_value)
         self.compile(self.q.trainable_weights, self.q.inputs + [t_y], loss)
 
         self.update_inputs()
 
     def update_inputs(self):
-        #logging.debug('Theta %s', self.q.params)
+        # logging.debug('Theta %s', self.q.params)
         self.data = [self.SA, self.dataset.reward + self.gamma * self.max_q()]
 
 
 class GradPBO(GradientAlgorithm):
-
     def __init__(self, experiment, bo, K=1, optimizer='adam', batch_size=10,
                  norm_value=2, update_index=1, update_steps=None,
                  incremental=False, independent=False):
@@ -116,7 +112,7 @@ class GradPBO(GradientAlgorithm):
         self.independent = independent
 
         # Theano variables (prefixed with 't_')
-        self.t_dataset = t_d = T.dmatrix('dataset')
+        self.t_dataset = t_d = T.matrix('dataset', dtype=theano.config.floatX)
 
         s_dim = experiment.state_dim
         a_dim = experiment.action_dim
@@ -125,8 +121,8 @@ class GradPBO(GradientAlgorithm):
         a_idx = n_idx + s_dim
 
         # Ensuring that Theano variables have the right shapes.
-        #self.t_s = t_d[:, 0:s_dim].reshape(get_shape(s_dim))
-        #self.t_a = t_d[:, s_dim:r_idx].reshape(get_shape(a_dim))
+        # self.t_s = t_d[:, 0:s_dim].reshape(get_shape(s_dim))
+        # self.t_a = t_d[:, s_dim:r_idx].reshape(get_shape(a_dim))
         self.t_sa = t_d[:, :r_idx].reshape(get_shape(r_idx))
         self.t_r = t_d[:, r_idx]
         self.t_s_next = t_d[:, n_idx:a_idx].reshape(get_shape(s_dim))
@@ -143,7 +139,7 @@ class GradPBO(GradientAlgorithm):
             loss = self.t_loss(t_theta0)[1]
             for i in range(1, K):
                 # XXX shouldn't this be 'dmatrix'?
-                theta_i = T.fmatrix('theta_{}'.format(i))
+                theta_i = T.matrix('theta_{}'.format(i), dtype=theano.config.floatX)
                 t_thetas.append(theta_i)
                 loss += self.t_loss(theta_i)[1]
             assert len(t_thetas) == K
@@ -154,10 +150,10 @@ class GradPBO(GradientAlgorithm):
 
         # Variables needed during execution
         self.data = [utils.rec_to_array(self.dataset)]
-        self.theta0 = self.q.params.reshape(1,-1)
+        self.theta0 = self.q.params.reshape(1, -1)
         self.apply_bo = (lambda t: t + bo(t)) if incremental else bo
         self.update_thetas = (lambda t: [t]) if not independent else \
-                             (lambda t: apply(self.apply_bo, K, t))
+            (lambda t: apply(self.apply_bo, K, t))
         self.x = self.update_thetas(self.theta0)
 
     # s, a version instead of sa
@@ -202,7 +198,6 @@ class GradPBO(GradientAlgorithm):
         for _ in range(self.update_steps):
             self.theta0 = self.apply_bo(self.theta0)
         self.x = self.update_thetas(self.theta0)
-
 
     def run(self, n=10, budget=None):
         super().run(n, budget)

@@ -4,6 +4,10 @@ os.environ.setdefault('KERAS_BACKEND', 'theano')
 
 import pytest
 import theano
+import keras
+
+theano.config.floatX = "float64"
+keras.backend.set_floatx(theano.config.floatX)
 import theano.tensor as T
 import numpy as np
 import numdifftools as nd
@@ -50,13 +54,23 @@ def empirical_bop(e: Experiment, rho, theta0, norm_value=2, incremental=False):
             if qv > bop[i]:
                 bop[i] = qv
     v = qnop - r - e.gamma * bop
-    return np_norm(v, norm_value)
+    return np_norm(v, norm_value), theta1_0
+
+
+def multi_step_ebop(e: Experiment, steps, rho, theta0, norm_value=2, incremental=False):
+    tot_err = 0.0
+    t = theta0
+    for k in range(steps):
+        err_k, t_tp1 = empirical_bop(e, rho, t, norm_value, incremental)
+        tot_err += err_k
+        t = np.array([t_tp1])
+    return tot_err, t
 
 
 class LBPO(regressor.Regressor):
     def __init__(self, rho):
-        self.rho = theano.shared(value=rho, name='rho')
-        self.theta = T.matrix()
+        self.rho = theano.shared(value=np.array(rho, dtype=theano.config.floatX), name='rho')
+        self.theta = T.matrix(dtype=theano.config.floatX)
         self.outputs = [T.dot(self.theta, self.rho)]
         self.inputs = [self.theta]
 
@@ -77,8 +91,8 @@ class LBPO(regressor.Regressor):
 
 class CurveFitQRegressor(regressor.Regressor):
     def __init__(self, params):
-        self._params = p = theano.shared(params, 'params', allow_downcast=True)
-        self.sa = sa = T.dmatrix('sa')
+        self._params = p = theano.shared(np.array(params, dtype=theano.config.floatX), 'params')
+        self.sa = sa = T.matrix('sa', dtype=theano.config.floatX)
         self.s, self.a = sa[:, 0], sa[:, 1]
         self.j = self.model(sa, p)
         self.inputs = [sa]
@@ -116,20 +130,19 @@ dataset_arr = np.array([
     [1., 0., -1., 2., 0., 0.],
     [2., 3., -5., 3., 0., 0.],
     [3., 4., +0., 4., 0., 0.],
-], dtype="float")
+], dtype=theano.config.floatX)
 
 dataset_rec = np.rec.array(dataset_arr.ravel(), copy=False, dtype=[
-    ('state', "float"), ('action', "float"), ('reward', "float"),
-    ('next_state', "float"), ('absorbing', "float"), ('done', "float")])
+    ('state', theano.config.floatX), ('action', theano.config.floatX), ('reward', theano.config.floatX),
+    ('next_state', theano.config.floatX), ('absorbing', theano.config.floatX), ('done', theano.config.floatX)])
 
 rho0 = np.array([[1., 2.], [0., 3.]], dtype=theano.config.floatX)
 theta0 = np.array([[2., 0.2]], dtype=theano.config.floatX)
 
 
-@pytest.fixture(params=[(2, False), (2, True)])
+@pytest.fixture(params=[(2, False, 1), (2, True, 1), (2, False, 3), (2, True, 3)])
 def experiment(request):
-    print(type(request))
-    norm_value, incremental = request.param
+    norm_value, incremental, K = request.param
 
     e = Experiment(
         env_name='LQG1D-v0',
@@ -137,7 +150,7 @@ def experiment(request):
         algorithm_class=algorithms.GradPBO,
         algorithm_config={
             'bo': LBPO(rho0),
-            'K': 1,
+            'K': K,
             'optimizer': 'adam',
             'batch_size': 10,
             'norm_value': norm_value,
@@ -149,7 +162,7 @@ def experiment(request):
         np_seed=None,
         env_seed=None,
     )
-    e.actions = np.array([1, 2, 3]).reshape(-1, 1)
+    e.actions = np.array([1, 2, 3], dtype=theano.config.floatX).reshape(-1, 1)
 
     # e.dataset = e.get_dataset()
     e.dataset = dataset_rec
@@ -165,7 +178,7 @@ def test_bellman_error(experiment):
 
     # dataset_arr = utils.rec_to_array(e.dataset)
     err0 = pbo.train_f(dataset_arr, theta0)
-    err1 = empirical_bop(e, rho0, theta0, pbo.norm_value, pbo.incremental)
+    err1 = multi_step_ebop(e, pbo.K, rho0, theta0, pbo.norm_value, pbo.incremental)[0]
 
     print(err0, err1)
     assert np.allclose(err0, err1), "{}, {}".format(err0, err1)
@@ -179,10 +192,11 @@ def test_grad(experiment):
     grad = theano.function(pbo.t_input, t_grad)
     r0 = grad(dataset_arr, theta0)
 
-    f = lambda x: empirical_bop(e, x, theta0, pbo.norm_value, pbo.incremental)
+    f = lambda x: multi_step_ebop(e, pbo.K, x, theta0, pbo.norm_value, pbo.incremental)[0]
     dfun = nd.Gradient(f)
     r1 = dfun(rho0.ravel()).reshape(rho0.shape)
 
+    print("{}\n {}".format(r0, r1))
     assert np.allclose(r0, r1), "{}, {}".format(r0, r1)
 
 
@@ -191,8 +205,10 @@ if __name__ == "__main__":
         param = None
 
 
+    print(keras.backend.floatx())
+    print(theano.config.floatX)
     rq = WrapReq()
-    rq.param = (2, False)
+    rq.param = (2, False, 1)
     ex = experiment(rq)
     test_bellman_error(ex)
     test_grad(ex)
