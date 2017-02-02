@@ -65,20 +65,23 @@ class GradientAlgorithm(Algorithm):
         o = self.optimizer
         updates = o.get_updates(trainable_weights, {}, loss)
         self.train_f = theano.function(inputs, [loss], updates=updates,
-                                       name='train')
+                                       name='train', allow_input_downcast=True)
         logger.info('Compiled train_f in %fs', time.time() - start_time)
 
     def step(self, i=0, budget=None):
+        self.history = {"theta":[]}
         np.random.shuffle(self.indices)
         i = i * self.batch_size
 
         for start, end in self.batches:
+            self.history["theta"].append(self.x[0][0])
             batch = slice_X(self.data, self.indices[start:end])
             i += 1
             self.train_f(*(batch + self.x))
 
             if self.update_index > 0 and i % self.update_index == 0:
                 self.update_inputs()
+
 
 
 class GradFQI(GradientAlgorithm):

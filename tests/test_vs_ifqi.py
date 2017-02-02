@@ -190,4 +190,5 @@ if __name__ == "__main__":
                       batch_size=batch_size, nb_epoch=nbep)
     ifqiweights = np.array(history.hist['theta']).squeeze()
 
-    print(weights)
+    print(weights[:10])
+    print(ifqiweights[:10])
