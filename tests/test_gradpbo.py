@@ -6,7 +6,7 @@ import pytest
 import theano
 import theano.tensor as T
 import numpy as np
-from scipy import optimize
+import numdifftools as nd
 
 from ifqi import envs
 
@@ -62,7 +62,7 @@ class LBPO(regressor.Regressor):
 
         # do not update rho
         self.trainable_weights = [self.rho]
-        #self.trainable_weights = []
+        # self.trainable_weights = []
         self.predict = theano.function(self.inputs, self.outputs[0])
 
     def model(self, theta):
@@ -122,14 +122,14 @@ dataset_rec = np.rec.array(dataset_arr.ravel(), copy=False, dtype=[
     ('state', "float"), ('action', "float"), ('reward', "float"),
     ('next_state', "float"), ('absorbing', "float"), ('done', "float")])
 
-
 rho0 = np.array([[1., 2.], [0., 3.]], dtype=theano.config.floatX)
 theta0 = np.array([[2., 0.2]], dtype=theano.config.floatX)
 
 
 @pytest.fixture(params=[(2, False), (2, True)])
 def experiment(request):
-    norm_value, incremental = request
+    print(type(request))
+    norm_value, incremental = request.param
 
     e = Experiment(
         env_name='LQG1D-v0',
@@ -179,15 +179,20 @@ def test_grad(experiment):
     grad = theano.function(pbo.t_input, t_grad)
     r0 = grad(dataset_arr, theta0)
 
-    eps = np.sqrt(np.finfo(float).eps)
     f = lambda x: empirical_bop(e, x, theta0, pbo.norm_value, pbo.incremental)
-    r1 = optimize.approx_fprime(rho0.ravel(), f, eps).reshape(rho0.shape)
-    print(r1)
+    dfun = nd.Gradient(f)
+    r1 = dfun(rho0.ravel()).reshape(rho0.shape)
 
     assert np.allclose(r0, r1), "{}, {}".format(r0, r1)
 
 
-# if __name__ == "__main__":
-#     ex = experiment()
-#     test_bellman_error(ex)
-#     test_grad(ex)
+if __name__ == "__main__":
+    class WrapReq(object):
+        param = None
+
+
+    rq = WrapReq()
+    rq.param = (2, False)
+    ex = experiment(rq)
+    test_bellman_error(ex)
+    test_grad(ex)
