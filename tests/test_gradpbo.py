@@ -209,6 +209,5 @@ if __name__ == "__main__":
     print(theano.config.floatX)
     rq = WrapReq()
     rq.param = (2, False, 1)
-    ex = experiment(rq)
-    test_bellman_error(ex)
-    test_grad(ex)
+    test_bellman_error(experiment(rq))
+    test_grad(experiment(rq))
