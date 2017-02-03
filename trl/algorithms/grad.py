@@ -65,7 +65,7 @@ class GradientAlgorithm(Algorithm):
         o = self.optimizer
         updates = o.get_updates(trainable_weights, {}, loss)
         self.train_f = theano.function(inputs, [loss], updates=updates,
-                                       name='train')
+                                       name='train', allow_input_downcast=True)
         logger.info('Compiled train_f in %fs', time.time() - start_time)
 
     def step(self, i=0, budget=None):
@@ -86,7 +86,7 @@ class GradFQI(GradientAlgorithm):
                  norm_value=2, update_index=1):
         super().__init__(experiment, optimizer, batch_size, norm_value, update_index)
 
-        self.t_y = t_y = T.vector('y', dtype=theano.config.floatX)
+        self.t_y = t_y = T.vector('y')
         loss = t_pnorm(self.q.outputs[0] - t_y, norm_value)
         self.compile(self.q.trainable_weights, self.q.inputs + [t_y], loss)
 
@@ -112,7 +112,7 @@ class GradPBO(GradientAlgorithm):
         self.independent = independent
 
         # Theano variables (prefixed with 't_')
-        self.t_dataset = t_d = T.matrix('dataset', dtype=theano.config.floatX)
+        self.t_dataset = t_d = T.matrix('dataset')
 
         s_dim = experiment.state_dim
         a_dim = experiment.action_dim
@@ -139,7 +139,7 @@ class GradPBO(GradientAlgorithm):
             loss = self.t_loss(t_theta0)[1]
             for i in range(1, K):
                 # XXX shouldn't this be 'dmatrix'?
-                theta_i = T.matrix('theta_{}'.format(i), dtype=theano.config.floatX)
+                theta_i = T.matrix('theta_{}'.format(i))
                 t_thetas.append(theta_i)
                 loss += self.t_loss(theta_i)[1]
             assert len(t_thetas) == K
@@ -150,21 +150,11 @@ class GradPBO(GradientAlgorithm):
 
         # Variables needed during execution
         self.data = [utils.rec_to_array(self.dataset)]
-        self.theta0 = self.q.params.reshape(1, -1)
+        self.theta0 = np.array(self.q.params).reshape(1, -1)
         self.apply_bo = (lambda t: t + bo(t)) if incremental else bo
         self.update_thetas = (lambda t: [t]) if not independent else \
-            (lambda t: apply(self.apply_bo, K, t))
+                             (lambda t: apply(self.apply_bo, K, t))
         self.x = self.update_thetas(self.theta0)
-
-    # s, a version instead of sa
-    # def max_q(self, s, theta):
-    #     q_values, _ = theano.scan(lambda a, s, t: self.q.model(s, a, t),
-    #                               [self.t_actions],
-    #                               non_sequences=[s, theta])
-    #     return T.max(q_values)
-    # And then:
-    #     maxq, _ = theano.scan(self.max_q, [self.t_s_next],
-    #                           non_sequences=[theta0_0])
 
     def t_max_q(self, theta):
         n = self.t_dataset.shape[0]
@@ -175,19 +165,15 @@ class GradPBO(GradientAlgorithm):
 
         return y.max(axis=1)
 
-    def t_loss(self, theta0, loss=ZERO):
-        theta1 = self.bo.model(theta0)
-        if self.incremental:
-            theta1 += theta0
+    def t_loss(self, theta, loss=ZERO):
+        maxq = self.t_max_q(theta[0])
 
-        theta0_0 = theta0[0]
-        theta1_0 = theta1[0]
+        tnext = self.bo.model(theta)
+        theta = (theta + tnext) if self.incremental else tnext
 
-        qpbo = self.q.model(self.t_sa, theta1_0)
-
-        maxq = self.t_max_q(theta0_0)
+        qpbo = self.q.model(self.t_sa, theta[0])
         v = qpbo - self.t_r - self.gamma * maxq
-        return theta1, loss + t_pnorm(v, self.norm_value)
+        return theta, loss + t_pnorm(v, self.norm_value)
 
     def t_k_loss(self, theta0):
         (_, loss), _ = theano.scan(self.t_loss, outputs_info=[theta0, ZERO],
