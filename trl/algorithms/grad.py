@@ -206,8 +206,6 @@ class GradPBO(GradientAlgorithm):
         return loss[-1]
 
     def update_inputs(self):
-        if (np.allclose(self.theta0, [6.55131721, 9.88019848])):
-            print('')
         for _ in range(self.update_steps):
             self.theta0 = self.apply_bo(self.theta0)
         self.x = self.update_thetas(self.theta0)

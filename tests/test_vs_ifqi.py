@@ -10,8 +10,10 @@ from keras.models import Sequential
 from keras.layers import Dense
 from keras import optimizers
 import keras
+
 theano.config.floatX = "float32"
 keras.backend.set_floatx(theano.config.floatX)
+
 
 class CurveFitQRegressor(regressor.Regressor):
     def __init__(self, params):
@@ -203,8 +205,8 @@ if __name__ == "__main__":
         el = XX[i]
         if el[0] > 1e-10:
             print("iteration: [errore theta] | [theta TRL] | [theta IFQI]")
-            print("{}: {}".format(i-1, XX[i-1]))
-            print("{}: {}".format(i - 1, el))
+            print("{}: {}".format(i - 1, XX[i - 1]))
+            print("{}: {}".format(i, el))
             print("NN weights")
             print("in TRL")
             print(alg.history['rho'][i])
