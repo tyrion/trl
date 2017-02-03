@@ -8,12 +8,16 @@ import theano
 import theano.tensor as T
 from keras.models import Sequential
 from keras.layers import Dense
-
+from keras import optimizers
+import keras
+theano.config.floatX = "float32"
+keras.backend.set_floatx(theano.config.floatX)
 
 class CurveFitQRegressor(regressor.Regressor):
     def __init__(self, params):
-        self._params = p = theano.shared(params, 'params', allow_downcast=True)
-        self.sa = sa = T.dmatrix('sa')
+        self._params = p = theano.shared(np.array(params, dtype=theano.config.floatX),
+                                         'params', allow_downcast=True)
+        self.sa = sa = T.matrix('sa', dtype=theano.config.floatX)
         self.s, self.a = sa[:, 0], sa[:, 1]
         self.s.name = 's'
         self.a.name = 'a'
@@ -67,6 +71,7 @@ def build_nn(input_dim=2, output_dim=2, activation='tanh'):
                     activation=activation))
     model.add(Dense(output_dim, init='uniform', activation='linear'))
     model.compile(loss='mse', optimizer='rmsprop')
+    print(model.get_weights())
     return regressor.KerasRegressor(model, input_dim)
 
 
@@ -106,9 +111,10 @@ def ifqi_bo_q(ACTIVATION="tanh"):
 
     Sequential.model = _model_evaluation
     rho_regressor = Sequential()
-    rho_regressor.add(Dense(20, input_dim=n_q_regressors_weights, init='uniform', activation=ACTIVATION))
+    rho_regressor.add(Dense(2, input_dim=n_q_regressors_weights, init='uniform', activation=ACTIVATION))
     rho_regressor.add(Dense(n_q_regressors_weights, init='uniform', activation='linear'))
-    rho_regressor.compile(loss='mse', optimizer='rmsprop', metrics=['accuracy'])
+    rho_regressor.compile(loss='mse', optimizer='rmsprop')
+    print(rho_regressor.get_weights())
 
     return q_regressor, rho_regressor
 
@@ -144,13 +150,13 @@ if __name__ == "__main__":
     q = CurveFitQRegressor(theta0)
     bo = build_nn(input_dim=2, output_dim=2, activation="tanh")
 
-    norm_value, incremental, K = (np.inf, True, 1)
-    nbep, batch_size, update_every = 2, 1, 1
+    norm_value, incremental, K = (2, True, 1)
+    nbep, batch_size, update_every = 2, 1, 2
     update_step = None
 
     sts = AlgSettings(dataset, discrete_actions, env.gamma, q, 1, 1)
 
-    alg = algorithms.GradPBO(sts, bo, K=K, optimizer='adam', batch_size=batch_size,
+    alg = algorithms.GradPBO(sts, bo, K=K, optimizer=optimizers.SGD(lr=1e-8), batch_size=batch_size,
                              norm_value=norm_value, update_index=update_every, update_steps=update_step,
                              incremental=incremental, independent=False)
 
@@ -167,12 +173,13 @@ if __name__ == "__main__":
                           steps_ahead=K,
                           discrete_actions=discrete_actions,
                           gamma=env.gamma,
-                          optimizer="adam",
+                          optimizer=optimizers.SGD(lr=1e-8),
                           state_dim=state_dim,
                           action_dim=action_dim,
                           incremental=incremental,
                           update_theta_every=update_every,
                           steps_per_theta_update=update_step,
+                          norm_value=norm_value,
                           verbose=0,
                           independent=False)
 
@@ -187,8 +194,9 @@ if __name__ == "__main__":
 
     theta0 = theta0.reshape(1, -1)
     history = pbo.fit(state, actions, next_states, reward, theta0,
-                      batch_size=batch_size, nb_epoch=nbep)
+                      batch_size=batch_size, nb_epoch=nbep, verbose=0)
     ifqiweights = np.array(history.hist['theta']).squeeze()
 
     print(weights[:10])
     print(ifqiweights[:10])
+    print(np.allclose(weights, ifqiweights))
