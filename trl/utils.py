@@ -4,6 +4,7 @@ from contextlib import closing
 import h5py
 import numpy as np
 import gym
+import theano
 from gym import spaces
 
 from trl import evaluation
@@ -27,7 +28,7 @@ def make_grid(x: np.ndarray, y: np.ndarray) -> np.ndarray:
 
 def rec_to_array(recarray: np.rec.array) -> np.ndarray:
     nrows = len(recarray)
-    d = recarray.view(float, np.ndarray)
+    d = recarray.view(theano.config.floatX, np.ndarray)
     return d.reshape((nrows, len(d) // nrows))
 
 

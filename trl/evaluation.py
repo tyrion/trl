@@ -2,11 +2,13 @@ import logging
 import time
 
 import numpy as np
+import theano
 
 from . import utils
 
 
 logger = logging.getLogger(__name__)
+floatX = theano.config.floatX
 
 
 class QPolicy:
@@ -64,20 +66,20 @@ class Interact:
     def allocate_trace(self):
         m = self.metrics
         self.trace = np.recarray((self.n,), [
-            ('state_i', float, self.state_dim),
-            ('state_f', float, self.state_dim),
+            ('state_i', floatX, self.state_dim),
+            ('state_f', floatX, self.state_dim),
             ('time', int)
-        ] + ([('metrics', float, len(m))] if m else []))
+        ] + ([('metrics', floatX, len(m))] if m else []))
 
     def allocate_dataset(self):
         n = self.horizon * (self.n if self.collect else 1)
         self.dataset = np.recarray((n,), [
-            ('state', float, self.state_dim),
-            ('action', float, self.action_dim),
-            ('reward', float),
-            ('next_state', float, self.state_dim),
-            ('absorbing', float),
-            ('done', float),
+            ('state', floatX, self.state_dim),
+            ('action', floatX, self.action_dim),
+            ('reward', floatX),
+            ('next_state', floatX, self.state_dim),
+            ('absorbing', floatX),
+            ('done', floatX),
         ])
 
     def __iter__(self):
