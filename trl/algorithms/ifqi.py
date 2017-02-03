@@ -56,7 +56,8 @@ class PBO(Algorithm):
 
         self.sast = utils.rec_to_array(self.dataset[
             ['state', 'action', 'next_state', 'absorbing']])
-        self.r = self.dataset.reward.view(float, np.ndarray)
+        dtype = self.dataset.reward.dtype
+        self.r = self.dataset.reward.view(dtype, np.ndarray)
 
     def run(self, n=10, budget=None):
         self.pbo.fit(self.sast, self.r)
