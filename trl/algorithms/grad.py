@@ -26,17 +26,6 @@ def apply(fn, n, i):
     return res
 
 
-def t_pnorm(x, p=2):
-    """p-norm as defined in IFQI"""
-    if p == np.inf:
-        return T.max(x**2)
-        # return T.max(abs(x))
-    if p % 2 == 0:
-        return T.mean(x ** p) ** (1. / p)
-    else:
-        return T.mean(abs(x) ** p) ** (1. / p)
-
-
 def t_make_grid(x, y):
     nx = x.shape[0]
     ny = y.shape[0]
@@ -98,7 +87,7 @@ class GradFQI(GradientAlgorithm):
         super().__init__(experiment, optimizer, batch_size, norm_value, update_index)
 
         self.t_y = t_y = T.vector('y')
-        loss = t_pnorm(self.q.outputs[0] - t_y, norm_value)
+        loss = utils.norm(self.q.outputs[0] - t_y, norm_value)
         self.compile(self.q.trainable_weights, self.q.inputs + [t_y], loss)
 
         self.update_inputs()
@@ -184,7 +173,7 @@ class GradPBO(GradientAlgorithm):
 
         qpbo = self.q.model(self.t_sa, theta[0])
         v = qpbo - self.t_r - self.gamma * maxq
-        return theta, loss + t_pnorm(v, self.norm_value)
+        return theta, loss + utils.norm(v, self.norm_value)
 
     def t_k_loss(self, theta0):
         (_, loss), _ = theano.scan(self.t_loss, outputs_info=[theta0, ZERO],

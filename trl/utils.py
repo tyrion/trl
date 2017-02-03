@@ -69,3 +69,11 @@ def save_dataset(dataset, filepath, name='dataset'):
         file[name].attrs['rec'] = isinstance(dataset, np.recarray)
         file.flush()
     logger.info('Saved %s to %s', name, filepath)
+
+
+def norm(x, p=2):
+    "Norm function accepting both ndarray or tensor as input"
+    if p == np.inf:
+        return (x ** 2).max()
+    x = x if p % 2 == 0 else abs(x)
+    return  (abs(x) ** p).sum() ** (1 / p)
