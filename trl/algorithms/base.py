@@ -2,7 +2,6 @@ import logging
 import warnings
 
 import numpy as np
-from numpy.linalg import norm
 from pybrain.optimization import ExactNES
 
 from .. import regressor, utils
@@ -65,10 +64,11 @@ class FQI(Algorithm):
 
 class PBO(Algorithm):
 
-    def __init__(self, experiment, bo, K=1):
+    def __init__(self, experiment, bo, K=1, incremental=False):
         super().__init__(experiment)
         self.bo = bo
         self.K = K
+        self.incremental = incremental
 
     def loss(self, omega):
         with self.bo.save_params(omega), self.q.save_params():
@@ -76,9 +76,12 @@ class PBO(Algorithm):
             for k in range(self.K):
                 q0 = self.max_q()
 
-                self.q.params = self.bo.predict_one(self.q.params)
+                t = self.bo.predict_one(self.q.params)
+                self.q.params = (self.q.params + t) if self.incremental else t
+
                 q1 = self.q(self.SA)
-                loss += norm(q1 - self.dataset.reward + self.gamma * q1, 2)
+                v = q1 - self.dataset.reward - self.gamma * q0
+                loss += utils.norm(v, 2)
         logger.debug('loss: %7d | q: %s', loss, self.q.params)
         #np.array2string(omega, max_line_width=np.inf))
         return loss
