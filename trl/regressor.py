@@ -9,8 +9,10 @@ import pickle
 
 import numpy as np
 import h5py
+import theano
 from sklearn.externals import joblib
 from sklearn import preprocessing
+from keras.engine.topology import to_list
 from ifqi.models import actionregressor
 
 
@@ -308,3 +310,42 @@ class ActionRegressor(Regressor):
                       in sorted(group.items()) if k.startswith('reg')]
         actions = group['actions'][:]
         return cls(regressors, actions)
+
+
+class SymbolicRegressor(Regressor):
+    INPUTS_NAME = 'inputs'
+    PARAMS_NAME = 'params'
+
+    def __init__(self, params):
+        self._params = p = theano.shared(params, self.PARAMS_NAME,
+                                         allow_downcast=True)
+        self.trainable_weights = [p]
+        i = self.get_inputs()
+        self.inputs = to_list(i)
+        self.outputs = to_list(self.model(i))
+        self.predict = self.compile()
+
+    def get_inputs(self):
+        return theano.tensor.matrix(self.INPUTS_NAME)
+
+    def compile(self):
+        o = self.outputs[0] if len(self.outputs) == 1 else self.outputs
+        return theano.function(self.inputs, o, name='predict')
+
+    @property
+    def params(self):
+        return self._params.get_value()
+
+    @params.setter
+    def params(self, params):
+        self._params.set_value(params)
+
+    def predict(self, x):
+        pass
+
+    def fit(self, x, y):
+        raise NotImplementedError
+
+    def model(self, inputs, params=None):
+        params = self._params if params is None else params
+        return self._model(inputs, params)
