@@ -31,8 +31,14 @@ def lqr_reg(s, a, theta):
 
 
 def np_norm(x, p=2):
-    return np.max(x ** 2) if p == np.inf else np.mean(x ** p) ** (1.0 / p)
-
+    """p-norm as defined in IFQI"""
+    if p == np.inf:
+        return T.max(x ** 2)
+        # return np.max(abs(x))
+    if p % 2 == 0:
+        return np.mean(x ** p) ** (1. / p)
+    else:
+        return np.mean(abs(x) ** p) ** (1. / p)
 
 def empirical_bop(e: Experiment, rho, theta0, norm_value=2, incremental=False):
     s = e.dataset.state
