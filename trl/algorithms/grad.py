@@ -76,12 +76,13 @@ class GradientAlgorithm(Algorithm):
 
     def step(self, i=0, budget=None):
         if not hasattr(self, "history"):
-            self.history = {"theta":[]}
+            self.history = {"theta":[], 'rho':[]}
         np.random.shuffle(self.indices)
         i = i * self.batch_size
 
         for start, end in self.batches:
             self.history["theta"].append(self.x[0])
+            self.history["rho"].append(self.bo.get_weights())
             batch = slice_X(self.data, self.indices[start:end])
             i += 1
             self.train_f(*(batch + self.x))
@@ -205,6 +206,8 @@ class GradPBO(GradientAlgorithm):
         return loss[-1]
 
     def update_inputs(self):
+        if (np.allclose(self.theta0, [6.55131721, 9.88019848])):
+            print('')
         for _ in range(self.update_steps):
             self.theta0 = self.apply_bo(self.theta0)
         self.x = self.update_thetas(self.theta0)

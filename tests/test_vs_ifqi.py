@@ -141,7 +141,7 @@ if __name__ == "__main__":
     env.seed(env_seed)
 
     episodes = 10
-    interaction = evaluation.Interact(env, episodes, horizon=100, collect=True)
+    interaction = evaluation.Interact(env, episodes, horizon=10, collect=True)
     interaction.interact()
     dataset = interaction.dataset  # il dataset è qui dentro
     discrete_actions = np.linspace(-8, 8, 20)
@@ -150,7 +150,7 @@ if __name__ == "__main__":
     q = CurveFitQRegressor(theta0)
     bo = build_nn(input_dim=2, output_dim=2, activation="tanh")
 
-    norm_value, incremental, K = (2, True, 1)
+    norm_value, incremental, K = (1, True, 1)
     nbep, batch_size, update_every = 2, 1, 2
     update_step = None
 
@@ -162,6 +162,7 @@ if __name__ == "__main__":
 
     alg.run(n=nbep)
     weights = np.array(alg.history['theta']).squeeze()
+    rhos = alg.history['rho']
 
     np.random.seed(np_seed)
 
@@ -197,6 +198,17 @@ if __name__ == "__main__":
                       batch_size=batch_size, nb_epoch=nbep, verbose=0)
     ifqiweights = np.array(history.hist['theta']).squeeze()
 
-    print(weights[:10])
-    print(ifqiweights[:10])
-    print(np.allclose(weights, ifqiweights))
+    XX = np.column_stack((weights - ifqiweights, weights, ifqiweights))
+    for i in range(XX.shape[0]):
+        el = XX[i]
+        if el[0] > 1e-10:
+            print("iteration: [errore theta] | [theta TRL] | [theta IFQI]")
+            print("{}: {}".format(i-1, XX[i-1]))
+            print("{}: {}".format(i - 1, el))
+            print("NN weights")
+            print("in TRL")
+            print(alg.history['rho'][i])
+            print("in IFQI")
+            print(history.hist['rho'][i])
+            break
+    assert np.allclose(weights, ifqiweights)
