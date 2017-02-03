@@ -28,7 +28,13 @@ def apply(fn, n, i):
 
 def t_pnorm(x, p=2):
     """p-norm as defined in IFQI"""
-    return T.max(x ** 2) if p == np.inf else T.mean(x ** p) ** (1 / p)
+    if p == np.inf:
+        return T.max(x**2)
+        # return T.max(abs(x))
+    if p % 2 == 0:
+        return T.mean(x ** p) ** (1. / p)
+    else:
+        return T.mean(abs(x) ** p) ** (1. / p)
 
 
 def t_make_grid(x, y):
@@ -69,16 +75,21 @@ class GradientAlgorithm(Algorithm):
         logger.info('Compiled train_f in %fs', time.time() - start_time)
 
     def step(self, i=0, budget=None):
+        if not hasattr(self, "history"):
+            self.history = {"theta":[], 'rho':[]}
         np.random.shuffle(self.indices)
         i = i * self.batch_size
 
         for start, end in self.batches:
+            self.history["theta"].append(self.x[0])
+            self.history["rho"].append(self.bo.get_weights())
             batch = slice_X(self.data, self.indices[start:end])
             i += 1
             self.train_f(*(batch + self.x))
 
             if self.update_index > 0 and i % self.update_index == 0:
                 self.update_inputs()
+
 
 
 class GradFQI(GradientAlgorithm):
