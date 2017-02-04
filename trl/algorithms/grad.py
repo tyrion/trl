@@ -67,18 +67,17 @@ class GradientAlgorithm(Algorithm):
         if not hasattr(self, "history"):
             self.history = {"theta":[], 'rho':[]}
         np.random.shuffle(self.indices)
-        i = i * self.batch_size
+        i = i * len(self.batches)
 
         for start, end in self.batches:
             self.history["theta"].append(self.x[0])
-            self.history["rho"].append(self.bo.get_weights())
+            self.history["rho"].append(self.bo._model.get_weights())
             batch = slice_X(self.data, self.indices[start:end])
             i += 1
             self.train_f(*(batch + self.x))
 
             if self.update_index > 0 and i % self.update_index == 0:
                 self.update_inputs()
-
 
 
 class GradFQI(GradientAlgorithm):
@@ -188,7 +187,10 @@ class GradPBO(GradientAlgorithm):
     def run(self, n=10, budget=None):
         super().run(n, budget)
         # logging.info('Learned theta: %s', self.theta0[0])
-        self.q.params = self.theta0[0]
+        thetaf = self.theta0
+        for _ in range(100):
+            thetaf = self.apply_bo(thetaf)
+        self.q.params = thetaf[0]
 
     def save(self, path):
         regressor.save_regressor(self.bo, path, 'bo')
