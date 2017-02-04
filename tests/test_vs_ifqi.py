@@ -153,12 +153,12 @@ if __name__ == "__main__":
     bo = build_nn(input_dim=2, output_dim=2, activation="tanh")
 
     norm_value, incremental, K = (1, True, 1)
-    nbep, batch_size, update_every = 2, 1, 2
+    nbep, batch_size, update_every = 2, 1, 1
     update_step = None
 
     sts = AlgSettings(dataset, discrete_actions, env.gamma, q, 1, 1)
 
-    alg = algorithms.GradPBO(sts, bo, K=K, optimizer=optimizers.SGD(lr=1e-8), batch_size=batch_size,
+    alg = algorithms.GradPBO(sts, bo, K=K, optimizer="adam", batch_size=batch_size,
                              norm_value=norm_value, update_index=update_every, update_steps=update_step,
                              incremental=incremental, independent=False)
 
@@ -176,7 +176,7 @@ if __name__ == "__main__":
                           steps_ahead=K,
                           discrete_actions=discrete_actions,
                           gamma=env.gamma,
-                          optimizer=optimizers.SGD(lr=1e-8),
+                          optimizer="adam",
                           state_dim=state_dim,
                           action_dim=action_dim,
                           incremental=incremental,
@@ -203,13 +203,14 @@ if __name__ == "__main__":
     XX = np.column_stack((weights - ifqiweights, weights, ifqiweights))
     for i in range(XX.shape[0]):
         el = XX[i]
-        if el[0] > 1e-10:
+        if not np.isfinite(el[0]) or el[0] > 1e-10:
             print("iteration: [errore theta] | [theta TRL] | [theta IFQI]")
             print("{}: {}".format(i - 1, XX[i - 1]))
             print("{}: {}".format(i, el))
             print("NN weights")
             print("in TRL")
             print(alg.history['rho'][i])
+            print(alg.history['rho2'][i])
             print("in IFQI")
             print(history.hist['rho'][i])
             break

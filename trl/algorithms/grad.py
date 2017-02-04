@@ -65,13 +65,14 @@ class GradientAlgorithm(Algorithm):
 
     def step(self, i=0, budget=None):
         if not hasattr(self, "history"):
-            self.history = {"theta":[], 'rho':[]}
+            self.history = {"theta":[], 'rho':[], 'rho2': []}
         np.random.shuffle(self.indices)
         i = i * self.batch_size
 
         for start, end in self.batches:
             self.history["theta"].append(self.x[0])
-            self.history["rho"].append(self.bo.get_weights())
+            self.history["rho"].append(self.bo._model.get_weights())
+            self.history["rho2"].append(self.bo.get_weights())
             batch = slice_X(self.data, self.indices[start:end])
             i += 1
             self.train_f(*(batch + self.x))
