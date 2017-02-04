@@ -33,12 +33,13 @@ def rec_to_array(recarray: np.rec.array) -> np.ndarray:
 
 
 def discretize_space(space: gym.Space, max=20):
+    floatX = theano.config.floatX
     if isinstance(space, spaces.Discrete):
-        return np.arange(space.n)
+        return np.arange(space.n, dtype=floatX)
 
     if isinstance(space, spaces.Box):
         # only 1D Box supported
-        return np.linspace(space.low, space.high, max)
+        return np.linspace(space.low, space.high, max, dtype=floatX)
 
     # ifqi's DiscreteValued
     try:
