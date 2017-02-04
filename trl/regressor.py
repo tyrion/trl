@@ -265,11 +265,12 @@ class KerasRegressor(SymbolicRegressor):
 
         return y
 
-    def model(self, inputs, params=None):
-        out = inputs
-        for el in self._model.flattened_layers:
-            out = el(out)
-        return out
+    def model(self, inputs, params=()):
+        inputs = [inputs] if isinstance(inputs, TensorVariable) else inputs
+        replace = dict(zip(self.inputs, inputs))
+        replace.update(zip(self.trainable_weights, params))
+        o = theano.clone(self.outputs, replace)
+        return o[0] if len(o) == 1 else o
 
     def get_config(self):
         config = copy.deepcopy(self.fit_kwargs)
