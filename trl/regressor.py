@@ -12,6 +12,7 @@ import h5py
 import theano
 from sklearn.externals import joblib
 from sklearn import preprocessing
+from theano.tensor.var import TensorVariable
 from keras.engine.topology import to_list
 from ifqi.models import actionregressor
 
@@ -122,7 +123,72 @@ class Regressor(metaclass=ABCMeta):
     count_params = lambda self: len(self.params)
 
 
-class KerasRegressor(Regressor):
+
+class SymbolicRegressor(Regressor):
+    """
+    Regressor that uses Symbolic Theano variables.
+
+    Additional methods and properties that must be provided by concrete
+    subclasses for Keras compatibility:
+     * training_weights
+     * inputs
+     * outputs
+    """
+
+    @abstractmethod
+    def model(self, inputs, params):
+        """
+        inputs and params can be a list of tensors or a single tensor.
+        Returns the output of the model given the supplied inputs and params
+        as a single tensor or as a list of tensors.
+        """
+        pass
+
+
+class TheanoRegressor(SymbolicRegressor):
+    INPUTS_NAME = 'inputs'
+    PARAMS_NAME = 'params'
+
+    def __init__(self, params):
+        self._params = p = theano.shared(params, self.PARAMS_NAME,
+                                         allow_downcast=True)
+        self.trainable_weights = [p]
+        i = self.get_inputs()
+        self.inputs = to_list(i)
+        self.outputs = to_list(self.model(i))
+        self.predict = self.compile()
+
+    def get_inputs(self):
+        return theano.tensor.matrix(self.INPUTS_NAME)
+
+    def compile(self):
+        o = self.outputs[0] if len(self.outputs) == 1 else self.outputs
+        return theano.function(self.inputs, o, name='predict',
+                               allow_input_downcast=True)
+
+    @property
+    def params(self):
+        return self._params.get_value()
+
+    @params.setter
+    def params(self, params):
+        self._params.set_value(params)
+
+    def predict(self, x):
+        pass
+
+    def fit(self, x, y):
+        raise NotImplementedError
+
+    def model(self, inputs, params=None):
+        params = self._params if params is None else params
+        return self._model(inputs, params)
+
+    # compatibility with ifqi
+    n_inputs = lambda self: len(self.inputs)
+
+
+class KerasRegressor(SymbolicRegressor):
 
     def __init__(self, model, input_dim=2, **fit_kwargs):
         self._model = model
@@ -234,6 +300,9 @@ class KerasRegressor(Regressor):
     def from_config(cls, model, config):
         return cls(model, **config)
 
+    # compatibility with ifqi
+    n_inputs = lambda self: self.input_dim
+
 
 class SkLearnRegressorMixin(Regressor):
 
@@ -312,40 +381,4 @@ class ActionRegressor(Regressor):
         return cls(regressors, actions)
 
 
-class SymbolicRegressor(Regressor):
-    INPUTS_NAME = 'inputs'
-    PARAMS_NAME = 'params'
 
-    def __init__(self, params):
-        self._params = p = theano.shared(params, self.PARAMS_NAME,
-                                         allow_downcast=True)
-        self.trainable_weights = [p]
-        i = self.get_inputs()
-        self.inputs = to_list(i)
-        self.outputs = to_list(self.model(i))
-        self.predict = self.compile()
-
-    def get_inputs(self):
-        return theano.tensor.matrix(self.INPUTS_NAME)
-
-    def compile(self):
-        o = self.outputs[0] if len(self.outputs) == 1 else self.outputs
-        return theano.function(self.inputs, o, name='predict')
-
-    @property
-    def params(self):
-        return self._params.get_value()
-
-    @params.setter
-    def params(self, params):
-        self._params.set_value(params)
-
-    def predict(self, x):
-        pass
-
-    def fit(self, x, y):
-        raise NotImplementedError
-
-    def model(self, inputs, params=None):
-        params = self._params if params is None else params
-        return self._model(inputs, params)

@@ -31,12 +31,12 @@ def lqr_reg(s, a, theta):
     return - b * b * s * a - 0.5 * k * a * a - 0.4 * k * s * s
 
 
-class LBPO(regressor.SymbolicRegressor):
+class LBPO(regressor.TheanoRegressor):
     def _model(self, theta, params):
         return bellmanop(params, theta)
 
 
-class CurveFitQRegressor(regressor.SymbolicRegressor):
+class CurveFitQRegressor(regressor.TheanoRegressor):
     def fit(self, x, y):
         self.params, pcov = curve_fit(self.Q, x, y, p0=self.params - 0.0001)
 
@@ -114,7 +114,7 @@ def test_bellman_error(experiment):
     assert np.allclose(err0, err1)
 
 
-def test_grad(experiment):
+def test_bellman_grad(experiment):
     e = experiment
     pbo = e.algorithm
 
