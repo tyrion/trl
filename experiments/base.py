@@ -4,8 +4,16 @@ import logging.config
 
 os.environ.setdefault('KERAS_BACKEND', 'theano')
 
-import numpy as np
 import theano
+
+floatX = theano.config.floatX
+import keras # this will override theano.config.floatX
+
+# respect theano settings.
+keras.backend.set_floatx(floatX)
+theano.config.floatX = floatX
+
+import numpy as np
 from theano import tensor as T
 from scipy.optimize import curve_fit
 from sklearn.ensemble import ExtraTreesRegressor
@@ -115,7 +123,8 @@ class CLIExperiment(Experiment):
         return build(input_dim=self.input_dim, output_dim=1)
 
     def get_algorithm_config(self):
-        if self.algorithm_class in (algorithms.NESPBO, ifqi.PBO, algorithms.GradPBO):
+        if self.algorithm_class in (algorithms.NESPBO, ifqi.PBO,
+                                    algorithms.GradPBO, ifqi.GradPBO):
             dim = len(self.q.params)
             self.algorithm_config['bo'] = build_nn(input_dim=dim, output_dim=dim)
         return self.algorithm_config

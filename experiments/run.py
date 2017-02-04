@@ -19,7 +19,8 @@ if __name__ == '__main__':
     parser.add_argument('env_name',
         help='The environment to use. Either from ifqi or gym.')
     parser.add_argument('algorithm',
-        choices=['fqi', 'pbo', 'ifqi_fqi', 'ifqi_pbo', 'gradfqi', 'gradpbo'],
+        choices=['fqi', 'pbo', 'ifqi_fqi', 'ifqi_pbo', 'gradfqi', 'gradpbo',
+                 'ifqi_gradpbo'],
         help='The algorithm to run')
     parser.add_argument('-n', '--training-iterations',
         metavar='N', type=int, default=50,
@@ -99,6 +100,7 @@ if __name__ == '__main__':
         'ifqi_pbo': ifqi.PBO,
         'gradfqi': algorithms.GradFQI,
         'gradpbo': algorithms.GradPBO,
+        'ifqi_gradpbo': ifqi.GradPBO,
     }[args.pop('algorithm')]
 
     args = {k:v for k,v in args.items() if v is not None}
