@@ -201,22 +201,22 @@ def test_gradpbo_history_comparison(opts, algo_c, summary):
     r2 = e.run()
     trlg = e.algorithm
 
-    np.allclose(r1[1], r2[1]), "{}, {}".format(r1[1], r2[1])
+    assert np.allclose(r1[1], r2[1]), "{}, {}".format(r1[1], r2[1])
 
     t1 = np.array(ifqig.history['theta']).squeeze()
     t2 = np.array(trlg.history['theta']).squeeze()
-    np.allclose(t1, t2), "{}, {}".format(t1, t2)
+    assert np.allclose(t1, t2), "{}, {}".format(t1, t2)
 
     for v1, v2 in zip(ifqig.history['rho'], trlg.history['rho']):
         for sv1, sv2 in zip(v1, v2):
-            np.allclose(sv1, sv2), "{}, {}".format(sv1, sv2)
+            assert np.allclose(sv1, sv2), "{}, {}".format(sv1, sv2)
 
 
 if __name__ == '__main__':
     st = FakeRequest()
     st.param = grad_params[3]
     test_gradpbo_history_comparison(*st.param)
-    cexp = experiment(st)
-    test_gradpbo(cexp)
-    cexp = experiment(st)
-    test_gradpbo_ifqi(cexp)
+    # cexp = experiment(st)
+    # test_gradpbo(cexp)
+    # cexp = experiment(st)
+    # test_gradpbo_ifqi(cexp)
