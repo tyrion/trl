@@ -1,6 +1,7 @@
 import logging
 import logging.config
 import os
+import sys
 
 os.environ.setdefault('KERAS_BACKEND', 'theano')
 
@@ -29,25 +30,25 @@ from trl.experiment import Experiment
 LOGGING = {
     'version': 1,
     'formatters': {
-	'default': {
-	    'format': '%(asctime)s %(levelname)5s:%(name)s: %(message)s',
-	},
+        'default': {
+            'format': '%(asctime)s %(levelname)5s:%(name)s: %(message)s',
+        },
     },
     'handlers': {
-	'console': {
-	    'class': 'logging.StreamHandler',
-	    'level': 'INFO',
-	    'formatter': 'default',
-	},
+        'console': {
+            'class': 'logging.StreamHandler',
+            'level': 'INFO',
+            'formatter': 'default',
+        },
     },
     'loggers': {
-	'trl': {
-	    'level': 'DEBUG',
-	},
+        'trl': {
+            'level': 'DEBUG',
+        },
     },
     'root': {
-	'level': 'DEBUG', # debug
-	'handlers': ['console'],
+        'level': 'DEBUG', # debug
+        'handlers': ['console'],
     },
 }
 
@@ -84,8 +85,9 @@ def build_nn(input_dim=2, output_dim=2, activation='sigmoid'):
 
 class BaseExperiment(Experiment):
     env_name = 'LQG1D-v0'
-    training_episodes = 10
+    training_episodes = 5
     training_iterations = 2
+    evaluation_episodes = 2
     budget = 1
 
     def get_q(self):
@@ -98,22 +100,15 @@ class BaseExperiment(Experiment):
         return self.algorithm_config
 
 
-
-params = [
-    (7094654038104888253, 3729446728225797397,
-        np.array([100., -0.76798844, -68.44076508])),
-]
-import sys
-
 @pytest.fixture
 def experiment(request):
     opts, algo_c, summary = request.param
-    sys.stderr.write(str(algo_c))
-    sys.stderr.write('\n')
+    print(algo_c, file=sys.stderr)
     Ex = type('Ex', (BaseExperiment,), opts)
 
     def get_experiment(algo):
-        e = Ex(algorithm_class=algo, algorithm_config=algo_c.copy(), horizon=10)
+        e = Ex(algorithm_class=algo, algorithm_config=algo_c.copy(),
+               initial_states=None, horizon=50)
         return e, summary
 
     return get_experiment
@@ -136,27 +131,30 @@ def run(experiment, algorithm):
 #     assert np.allclose(summary, r[1])
 #
 
-def mk_params(keys, config_list):
-    for config in config_list:
-        summary = config.pop()
-        params = [dict(zip(k, v)) for k, v in zip(keys, config)]
-        params.append(summary)
-        yield params
 
+grad_params = (
+[
+    {'np_seed': 7094654038104888253, 'env_seed': 3729446728225797397},
+    {'incremental': True, 'K': 1, 'update_index': 1, 'update_steps': 1,
+     'batch_size': 10},
+    [50., -1.08974481, -52.04819489]],
+[
+    {'np_seed': 13594933323247414643, 'env_seed': 12280054697174909087},
+    {'incremental': True, 'K': 2, 'update_index': 2, 'update_steps': 1,
+     'batch_size': 5},
+    [50. , -1.66234112, -80.40379333]],
+[
+    {'np_seed': 7094654038104888253, 'env_seed': 3729446728225797397},
+    {'incremental': False, 'K': 3, 'update_index': 2, 'update_steps': 1,
+     'batch_size': 7},
+    [50., -1.68249202, -80.60005951]],
+[
+    {'np_seed': 13594933323247414643, 'env_seed': 12280054697174909087},
+    {'incremental': False, 'K': 1, 'update_index': 1, 'update_steps': 2,
+     'batch_size': 1},
+    [50., -5.69852829, -270.3427124]],
+)
 
-grad_params = list(mk_params([
-    ('np_seed', 'env_seed'),
-    ('incremental', 'K', 'update_index', 'update_steps', 'batch_size')
-],[
-#[ (7094654038104888253, 3729446728225797397), (True, 1, 1, 1, 10),
-#  [ 100., -0.75184202, -67.01778412]],
-[ (1312312, 2236864), (True, 1, 2, 1, 25),
-  [10., -5.73367834, -57.0005722 ]],
-[ (1312312, 2236864), (True, 1, 1, 1, 10),
-  [10., -5.90091419, -58.89385986]],
-[ (1312312, 2236864), (True, 3, 1, 1, 25), # lowering batch size it gets worse
-  [10., -5.64493275, -56.3213501 ]],
-]))
 
 
 @pytest.mark.parametrize('experiment', grad_params, True)
