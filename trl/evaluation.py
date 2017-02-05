@@ -5,6 +5,7 @@ import numpy as np
 import theano
 
 from . import utils
+from ifqi.utils.spaces.sampler import space_sampler
 
 
 logger = logging.getLogger(__name__)
@@ -23,10 +24,10 @@ class QPolicy:
 
 class RandomPolicy:
     def __init__(self, env):
-        self.env = env
+        self.sampler = space_sampler(env.action_space)
 
     def draw_action(self, *args):
-        return self.env.action_space.sample()
+        return self.sampler()
 
 
 class Interact:
