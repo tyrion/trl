@@ -9,7 +9,7 @@ import pytest
 import theano
 
 floatX = theano.config.floatX
-import keras # this will override theano.config.floatX
+import keras  # this will override theano.config.floatX
 
 # respect theano settings.
 keras.backend.set_floatx(floatX)
@@ -24,8 +24,6 @@ from ifqi import envs
 from trl import algorithms, regressor, utils
 from trl.algorithms import ifqi
 from trl.experiment import Experiment
-
-
 
 LOGGING = {
     'version': 1,
@@ -47,12 +45,16 @@ LOGGING = {
         },
     },
     'root': {
-        'level': 'DEBUG', # debug
+        'level': 'DEBUG',  # debug
         'handlers': ['console'],
     },
 }
 
 logging.config.dictConfig(LOGGING)
+
+
+class FakeRequest():
+    param = None
 
 
 class CurveFitQRegressor(regressor.TheanoRegressor):
@@ -117,26 +119,26 @@ def experiment(request):
 def run(experiment, algorithm):
     e, summary = experiment(algorithm)
     r = e.run()
-    assert np.allclose(summary, r[1])
+    assert np.allclose(summary, r[1]), "{} {}".format(summary, r[1])
 
 
 nes_params = (
-[
-    {'np_seed': 7094654038104888253, 'env_seed': 3729446728225797397},
-    {'incremental': True, 'batch_size': 10, 'learning_rate': 0.05},
-    [50. , -1.19969833, -57.35381317]],
-[
-    {'np_seed': 13594933323247414643, 'env_seed': 12280054697174909087},
-    {'incremental': True, 'batch_size': 12, 'learning_rate': 0.2},
-    [50. , -1.66234112, -80.40379333]],
-[
-    {'np_seed': 7094654038104888253, 'env_seed': 3729446728225797397},
-    {'incremental': False, 'batch_size': 10, 'learning_rate': 0.1},
-    [50., -1.19048798, -57.26132202]],
-[
-    {'np_seed': 13594933323247414643, 'env_seed': 12280054697174909087},
-    {'incremental': False, 'batch_size': 12, 'learning_rate': 2},
-    [50., -1.55656433, -75.25311279]],
+    [
+        {'np_seed': 7094654038104888253, 'env_seed': 3729446728225797397},
+        {'incremental': True, 'batch_size': 10, 'learning_rate': 0.05},
+        [50., -1.19969833, -57.35381317]],
+    [
+        {'np_seed': 13594933323247414643, 'env_seed': 12280054697174909087},
+        {'incremental': True, 'batch_size': 12, 'learning_rate': 0.2},
+        [50., -1.66234112, -80.40379333]],
+    [
+        {'np_seed': 7094654038104888253, 'env_seed': 3729446728225797397},
+        {'incremental': False, 'batch_size': 10, 'learning_rate': 0.1},
+        [50., -1.19048798, -57.26132202]],
+    [
+        {'np_seed': 13594933323247414643, 'env_seed': 12280054697174909087},
+        {'incremental': False, 'batch_size': 12, 'learning_rate': 2},
+        [50., -1.55656433, -75.25311279]],
 )
 
 
@@ -144,39 +146,77 @@ nes_params = (
 def test_nespbo(experiment):
     run(experiment, algorithms.NESPBO)
 
+
 @pytest.mark.parametrize('experiment', nes_params, True)
 def test_nespbo_ifqi(experiment):
     run(experiment, ifqi.PBO)
 
-grad_params = (
-[
-    {'np_seed': 7094654038104888253, 'env_seed': 3729446728225797397},
-    {'incremental': True, 'K': 1, 'update_index': 1, 'update_steps': 1,
-     'batch_size': 10},
-    [50., -1.08974481, -52.04819489]],
-[
-    {'np_seed': 13594933323247414643, 'env_seed': 12280054697174909087},
-    {'incremental': True, 'K': 2, 'update_index': 2, 'update_steps': 1,
-     'batch_size': 5},
-    [50. , -1.66234112, -80.40379333]],
-[
-    {'np_seed': 7094654038104888253, 'env_seed': 3729446728225797397},
-    {'incremental': False, 'K': 3, 'update_index': 2, 'update_steps': 1,
-     'batch_size': 7},
-    [50., -1.68249202, -80.60005951]],
-[
-    {'np_seed': 13594933323247414643, 'env_seed': 12280054697174909087},
-    {'incremental': False, 'K': 1, 'update_index': 1, 'update_steps': 2,
-     'batch_size': 1},
-    [50., -5.69852829, -270.3427124]],
-)
 
+grad_params = (
+    [
+        {'np_seed': 7094654038104888253, 'env_seed': 3729446728225797397},
+        {'incremental': True, 'K': 1, 'update_index': 1, 'update_steps': 1,
+         'batch_size': 10},
+        [50., -1.08974481, -52.04819489]],
+    [
+        {'np_seed': 13594933323247414643, 'env_seed': 12280054697174909087},
+        {'incremental': True, 'K': 2, 'update_index': 2, 'update_steps': 1,
+         'batch_size': 5},
+        [50., -1.66234112, -80.40379333]],
+    [
+        {'np_seed': 7094654038104888253, 'env_seed': 3729446728225797397},
+        {'incremental': False, 'K': 3, 'update_index': 2, 'update_steps': 1,
+         'batch_size': 7},
+        [50., -1.68249202, -80.60005951]],
+    [
+        {'np_seed': 13594933323247414643, 'env_seed': 12280054697174909087},
+        {'incremental': False, 'K': 1, 'update_index': 1, 'update_steps': 2,
+         'batch_size': 1},
+        [50., -5.69852829, -270.3427124]],
+)
 
 
 @pytest.mark.parametrize('experiment', grad_params, True)
 def test_gradpbo(experiment):
     run(experiment, algorithms.GradPBO)
 
+
 @pytest.mark.parametrize('experiment', grad_params, True)
 def test_gradpbo_ifqi(experiment):
     run(experiment, ifqi.GradPBO)
+
+
+@pytest.mark.parametrize("opts, algo_c, summary", grad_params)
+def test_gradpbo_history_comparison(opts, algo_c, summary):
+    request = FakeRequest()
+    request.param = (opts, algo_c, summary)
+
+    cexp = experiment(request)
+    e, summary = cexp(ifqi.GradPBO)
+    r1 = e.run()
+    ifqig = e.algorithm
+
+    cexp = experiment(request)
+    e, summary = cexp(algorithms.GradPBO)
+    r2 = e.run()
+    trlg = e.algorithm
+
+    np.allclose(r1[1], r2[1]), "{}, {}".format(r1[1], r2[1])
+
+    t1 = np.array(ifqig.history['theta']).squeeze()
+    t2 = np.array(trlg.history['theta']).squeeze()
+    np.allclose(t1, t2), "{}, {}".format(t1, t2)
+
+    for v1, v2 in zip(ifqig.history['rho'], trlg.history['rho']):
+        for sv1, sv2 in zip(v1, v2):
+            np.allclose(sv1, sv2), "{}, {}".format(sv1, sv2)
+
+
+if __name__ == '__main__':
+    st = FakeRequest()
+    st.param = grad_params[3]
+    test_gradpbo_history_comparison(*st.param)
+    cexp = experiment(st)
+    test_gradpbo(cexp)
+    cexp = experiment(st)
+    test_gradpbo_ifqi(cexp)

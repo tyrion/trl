@@ -10,7 +10,6 @@ from .. import utils
 
 
 class FQI(Algorithm):
-
     def __init__(self, experiment):
         super().__init__(experiment)
 
@@ -24,7 +23,7 @@ class FQI(Algorithm):
             verbose=False)
 
         self.sast = utils.rec_to_array(self.dataset[
-            ['state', 'action', 'next_state', 'absorbing']])
+                                           ['state', 'action', 'next_state', 'absorbing']])
         self.r = self.dataset.reward.view(float, np.ndarray)
 
     def first_step(self, budget=None):
@@ -35,7 +34,6 @@ class FQI(Algorithm):
 
 
 class PBO(Algorithm):
-
     def __init__(self, experiment, bo, incremental=False, batch_size=10,
                  learning_rate=0.1):
         super().__init__(experiment)
@@ -57,7 +55,7 @@ class PBO(Algorithm):
             verbose=False)
 
         self.sast = utils.rec_to_array(self.dataset[
-            ['state', 'action', 'next_state', 'absorbing']])
+                                           ['state', 'action', 'next_state', 'absorbing']])
         dtype = self.dataset.reward.dtype
         self.r = self.dataset.reward.view(dtype, np.ndarray)
 
@@ -66,7 +64,6 @@ class PBO(Algorithm):
 
 
 class GradPBO(Algorithm):
-
     class Q:
         def __init__(self, regressor):
             self.regressor = regressor
@@ -103,7 +100,7 @@ class GradPBO(Algorithm):
     def run(self, n=10, budget=None):
         d = self.dataset
         theta0 = self.q.regressor.params.reshape(1, -1)
-        history = self.pbo.fit(d.state, d.action, d.next_state, d.reward, theta0,
-                               self.batch_size, n, verbose=0)
+        self.history = self.pbo.fit(d.state, d.action, d.next_state, d.reward, theta0,
+                                    self.batch_size, n, verbose=0)
         thetaf = self.pbo.learned_theta_value[0]
         self.q.regressor.params = thetaf
