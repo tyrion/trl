@@ -83,9 +83,10 @@ class Experiment:
                 setattr(self, key, value)
 
         e = self.evaluation_episodes
-        i = len(self.initial_states)
-        if self.initial_states is not None and (e is None or e > i):
-            self.evaluation_episodes = i
+        if self.initial_states is not None:
+            i = len(self.initial_states)
+            if (e is None or e > i):
+                self.evaluation_episodes = i
 
         self.state_dim = utils.get_space_dim(self.env.observation_space)
         self.action_dim = utils.get_space_dim(self.env.action_space)
