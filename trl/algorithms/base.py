@@ -90,30 +90,29 @@ class PBO(Algorithm):
         regressor.save_regressor(self.bo, path, 'bo')
 
 
-class LoggingNES(ExactNES):
-    prev = None
-
-    def _notify(self):
-        b = self.bestEvaluation
-        if b != self.prev:
-            n = self.numLearningSteps
-            logger.info('%4s loss: %d', n, b)
-            self.prev = b
-
-
 class NESPBO(PBO):
 
-    def __init__(self, experiment, bo, K=1, **nes_args):
+    def __init__(self, experiment, bo, K=1, incremental=False, batch_size=10,
+                 learning_rate=0.1, **nes_args):
         super().__init__(experiment, bo, K)
+        self.incremental = incremental
         nes_args.setdefault('importanceMixing', False)
-        nes_args.setdefault('learningRate', 0.1)
-        nes_args.setdefault('batchSize', 10)
-        self.optimizer = LoggingNES(self.loss, self.bo.params, minimize=True,
-                                    **nes_args)
+        self.best_params = self.bo.params
+        self.optimizer = ExactNES(self.loss, self.best_params, minimize=True,
+                                  batchSize=batch_size,
+                                  learningRate=learning_rate, **nes_args)
+
+    def loss(self, omega):
+        loss = super().loss(omega)
+        if loss < self.best_loss:
+            self.best_loss = loss
+            self.best_params = omega
+        return loss
 
     def step(self, i=0, budget=None):
-        params, loss = self.optimizer.learn(budget)
-        self.bo.params = params
-        self.q.params = self.bo.predict_one(self.q.params)
-        #print(loss, delta)
-        #log(i, params, loss, self.q.params)
+        self.best_loss = np.inf
+        _, g_loss = self.optimizer.learn(budget)
+        self.bo.params = self.best_params
+        tnext = self.bo.predict_one(self.q.params)
+        self.q.params = (self.q.params + tnext) if self.incremental else tnext
+        logger.info('Global best: %f | Local best: %f', g_loss, self.best_loss)
