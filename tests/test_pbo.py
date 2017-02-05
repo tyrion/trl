@@ -190,6 +190,7 @@ def test_gradpbo_ifqi(experiment):
 def test_gradpbo_history_comparison(opts, algo_c, summary):
     request = FakeRequest()
     request.param = (opts, algo_c, summary)
+    print(request.param)
 
     cexp = experiment(request)
     e, summary = cexp(ifqi.GradPBO)
@@ -215,6 +216,7 @@ def test_gradpbo_history_comparison(opts, algo_c, summary):
 if __name__ == '__main__':
     st = FakeRequest()
     st.param = grad_params[3]
+    print(st.param)
     test_gradpbo_history_comparison(*st.param)
     # cexp = experiment(st)
     # test_gradpbo(cexp)
