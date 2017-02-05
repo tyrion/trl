@@ -36,7 +36,8 @@ class FQI(Algorithm):
 
 class PBO(Algorithm):
 
-    def __init__(self, experiment, bo):
+    def __init__(self, experiment, bo, incremental=False, batch_size=10,
+                 learning_rate=0.1):
         super().__init__(experiment)
 
         r = Regressor(object)
@@ -50,9 +51,9 @@ class PBO(Algorithm):
             discrete_actions=self.actions,
             gamma=self.gamma,
             learning_steps=experiment.training_iterations,
-            batch_size=10,
-            learning_rate=0.1,
-            incremental=False,
+            batch_size=batch_size,
+            learning_rate=learning_rate,
+            incremental=incremental,
             verbose=False)
 
         self.sast = utils.rec_to_array(self.dataset[
