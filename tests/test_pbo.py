@@ -119,18 +119,34 @@ def run(experiment, algorithm):
     r = e.run()
     assert np.allclose(summary, r[1])
 
-# def test_pbo(experiment):
-#     e, summary = experiment(algorithms.NESPBO)
-#     r = e.run()
-#     assert np.allclose(summary, r[1])
-#
-#
-# def test_ifqi_pbo(experiment):
-#     e, summary = experiment(ifqi.PBO)
-#     r = e.run()
-#     assert np.allclose(summary, r[1])
-#
 
+nes_params = (
+[
+    {'np_seed': 7094654038104888253, 'env_seed': 3729446728225797397},
+    {'incremental': True, 'batch_size': 10, 'learning_rate': 0.05},
+    [50. , -1.19969833, -57.35381317]],
+[
+    {'np_seed': 13594933323247414643, 'env_seed': 12280054697174909087},
+    {'incremental': True, 'batch_size': 12, 'learning_rate': 0.2},
+    [50. , -1.66234112, -80.40379333]],
+[
+    {'np_seed': 7094654038104888253, 'env_seed': 3729446728225797397},
+    {'incremental': False, 'batch_size': 10, 'learning_rate': 0.1},
+    [50., -1.19048798, -57.26132202]],
+[
+    {'np_seed': 13594933323247414643, 'env_seed': 12280054697174909087},
+    {'incremental': False, 'batch_size': 12, 'learning_rate': 2},
+    [50., -1.55656433, -75.25311279]],
+)
+
+
+@pytest.mark.parametrize('experiment', nes_params, True)
+def test_nespbo(experiment):
+    run(experiment, algorithms.NESPBO)
+
+@pytest.mark.parametrize('experiment', nes_params, True)
+def test_nespbo_ifqi(experiment):
+    run(experiment, ifqi.PBO)
 
 grad_params = (
 [
@@ -158,9 +174,9 @@ grad_params = (
 
 
 @pytest.mark.parametrize('experiment', grad_params, True)
-def test_uegradpbo(experiment):
+def test_gradpbo(experiment):
     run(experiment, algorithms.GradPBO)
 
 @pytest.mark.parametrize('experiment', grad_params, True)
-def test_ifqi_gradpbo(experiment):
+def test_gradpbo_ifqi(experiment):
     run(experiment, ifqi.GradPBO)
