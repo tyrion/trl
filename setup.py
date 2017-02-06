@@ -41,14 +41,20 @@ setup(
     keywords='ai rl reinforcement learning fqi openai',
     packages=['trl'],
     install_requires=[
-        'numpy>=1.12.0',
+        'numpy>=1.11.0,<1.12.0',
         'scipy>=0.18.1',
         'keras>=1.2.1',
         'gym>=0.7.2',
         'scikit-learn>=0.18.1',
-        'pybrain>=0.3',
+        'pybrain>=0.3.3',
         'matplotlib>=2.0.0',
         'h5py>=2.6.0',
-        'Numdifftools>=0.9.20'
+        'ifqi',
     ],
+    extras_require={
+        'test': [
+            'pytest>=3.0.6',
+            'Numdifftools>=0.9.20',
+        ],
+    },
 )
