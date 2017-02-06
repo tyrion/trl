@@ -105,3 +105,6 @@ class GradPBO(Algorithm):
                                     self.batch_size, n, verbose=0)
         thetaf = self.pbo.learned_theta_value[0]
         self.q.regressor.params = thetaf
+
+    def apply_bo(self, theta):
+        return self.pbo.apply_bo(theta)
