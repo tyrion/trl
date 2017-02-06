@@ -24,7 +24,8 @@ class FQI(Algorithm):
 
         self.sast = utils.rec_to_array(self.dataset[
                                            ['state', 'action', 'next_state', 'absorbing']])
-        self.r = self.dataset.reward.view(float, np.ndarray)
+        dtype = self.dataset.reward.dtype
+        self.r = self.dataset.reward.view(dtype, np.ndarray)
 
     def first_step(self, budget=None):
         return self.fqi.partial_fit(self.sast, self.r)
