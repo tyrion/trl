@@ -1,5 +1,7 @@
 # trl
 
+[![Build Status](https://travis-ci.org/tyrion/trl.svg?branch=master)](https://travis-ci.org/tyrion/trl)
+
 ## Requirements
 * Python3
 * [ifqi](https://github.com/teopir/ifqi/)
