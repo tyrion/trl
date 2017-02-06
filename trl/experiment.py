@@ -267,18 +267,18 @@ class Experiment:
         return e.run()
 
     @classmethod
-    def run_many(cls, n, run=None, **config):
+    def run_many(cls, n, run=None, workers=None, **config):
         if run is None:
             run = cls.run_ith
-        return cls.run_iter(range(n), run, **config)
+        return cls.run_iter(range(n), run, workers, **config)
 
     @classmethod
-    def run_iter(cls, iter, run, **config):
+    def run_iter(cls, iter, run, workers=None, **config):
         logger = logging.getLogger('trl')
         lvl = logger.level
         logger.setLevel(logging.ERROR)
 
-        with concurrent.futures.ProcessPoolExecutor() as executor:
+        with concurrent.futures.ProcessPoolExecutor(workers) as executor:
             start_time = time.time()
             futures = {executor.submit(run, x, **config): i
                        for i, x in enumerate(iter)}
