@@ -48,6 +48,16 @@ LOGGING = {
     },
 }
 
+ALGORITHMS = {
+    'fqi': algorithms.FQI,
+    'pbo': algorithms.NESPBO,
+    'gradfqi': algorithms.GradFQI,
+    'gradpbo': algorithms.GradPBO,
+    'ifqi_fqi': ifqi.FQI,
+    'ifqi_pbo': ifqi.PBO,
+    'ifqi_gradpbo': ifqi.GradPBO,
+}
+
 
 class CurveFitQRegressor(regressor.TheanoRegressor):
     def fit(self, x, y):

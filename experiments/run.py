@@ -93,16 +93,7 @@ if __name__ == '__main__':
     if len(seeds) > 1:
         args['env_seed'] = seeds[1]
 
-    args['algorithm_class'] = {
-        'fqi': algorithms.FQI,
-        'pbo': algorithms.NESPBO,
-        'ifqi_fqi': ifqi.FQI,
-        'ifqi_pbo': ifqi.PBO,
-        'gradfqi': algorithms.GradFQI,
-        'gradpbo': algorithms.GradPBO,
-        'ifqi_gradpbo': ifqi.GradPBO,
-    }[args.pop('algorithm')]
-
+    args['algorithm_class'] = base.ALGORITHMS[args.pop('algorithm')]
     args = {k:v for k,v in args.items() if v is not None}
 
     base.CLIExperiment(**args).run()
