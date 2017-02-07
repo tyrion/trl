@@ -21,6 +21,8 @@ from ifqi import envs
 from trl import algorithms, regressor, utils
 from trl.experiment import Experiment
 
+class FakeRequest():
+    param = None
 
 def bellmanop(rho, theta):
     return theta.dot(rho)
@@ -100,7 +102,7 @@ def experiment(request):
     e.q = CurveFitQRegressor(theta0[0])
     e.seed(1)
     e.algorithm = e.get_algorithm()
-    e.epbo = algorithms.PBO(e, bo, K, incremental)
+    e.epbo = algorithms.PBO(e, bo, K, incremental=incremental)
     return e
 
 
@@ -127,3 +129,10 @@ def test_bellman_grad(experiment):
     r1 = dfun(rho0.ravel()).reshape(rho0.shape)
 
     assert np.allclose(r0, r1)
+
+if __name__ == '__main__':
+    st = FakeRequest()
+    st.param = (False, 1)
+    print(st.param)
+    cexp = experiment(st)
+    test_bellman_error(cexp)
