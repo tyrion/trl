@@ -71,4 +71,4 @@ if __name__ == '__main__':
     pat = globals()['pat_{}'.format(base)]
     dtype = globals()['dtype_{}'.format(base)]
 
-    posprocess(base, pat, dtype)
+    postprocess(base, pat, dtype)
