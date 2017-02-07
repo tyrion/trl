@@ -39,6 +39,7 @@ class Algorithm:
         self.step(i=0, budget=budget)
 
     def run(self, n=10, budget=None):
+        self.create_history()
         logger.info('Iteration 0')
         self.first_step(budget)
         for i in range(1, n):
@@ -49,6 +50,11 @@ class Algorithm:
         """Save algorithm state to file"""
         pass
 
+    def create_history(self):
+        pass
+
+    def update_history(self):
+        pass
 
 class FQI(Algorithm):
 

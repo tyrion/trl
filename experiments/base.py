@@ -51,7 +51,7 @@ LOGGING = {
 ALGORITHMS = {
     'fqi': algorithms.FQI,
     'pbo': algorithms.NESPBO,
-    'gradfqi': algorithms.GradFQI,
+    'gradfqi': algorithms.GenGradFQI,
     'gradpbo': algorithms.GradPBO,
     'ifqi_fqi': ifqi.FQI,
     'ifqi_pbo': ifqi.PBO,

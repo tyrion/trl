@@ -64,14 +64,11 @@ class GradientAlgorithm(Algorithm):
         logger.info('Compiled train_f in %fs', time.time() - start_time)
 
     def step(self, i=0, budget=None):
-        if not hasattr(self, "history"):
-            self.history = {"theta":[], 'rho':[]}
         np.random.shuffle(self.indices)
         i = i * len(self.batches)
 
         for start, end in self.batches:
-            self.history["theta"].append(self.x[0])
-            self.history["rho"].append(self.bo._model.get_weights())
+            self.update_history()
             batch = slice_X(self.data, self.indices[start:end])
             i += 1
             self.train_f(*(batch + self.x))
@@ -80,7 +77,7 @@ class GradientAlgorithm(Algorithm):
                 self.update_inputs()
 
 
-class GradFQI(GradientAlgorithm):
+class GenGradFQI(GradientAlgorithm):
     def __init__(self, experiment, optimizer='adam', batch_size=10,
                  norm_value=2, update_index=1):
         super().__init__(experiment, optimizer, batch_size, norm_value, update_index)
@@ -94,6 +91,12 @@ class GradFQI(GradientAlgorithm):
     def update_inputs(self):
         # logging.debug('Theta %s', self.q.params)
         self.data = [self.SA, self.dataset.reward + self.gamma * self.max_q()]
+
+    def create_history(self):
+        self.history = {"theta":[]}
+
+    def update_history(self):
+        self.history["theta"].append(self.q.params)
 
 
 class GradPBO(GradientAlgorithm):
@@ -194,3 +197,10 @@ class GradPBO(GradientAlgorithm):
 
     def save(self, path):
         regressor.save_regressor(self.bo, path, 'bo')
+
+    def create_history(self):
+        self.history = {"theta":[], 'rho':[]}
+
+    def update_history(self):
+        self.history["theta"].append(self.x[0])
+        self.history["rho"].append(self.bo._model.get_weights())
