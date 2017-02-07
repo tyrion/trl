@@ -39,6 +39,7 @@ class Algorithm:
         self.step(i=0, budget=budget)
 
     def run(self, n=10, budget=None):
+        self.create_history()
         logger.info('Iteration 0')
         self.first_step(budget)
         for i in range(1, n):
@@ -49,6 +50,11 @@ class Algorithm:
         """Save algorithm state to file"""
         pass
 
+    def create_history(self):
+        pass
+
+    def update_history(self):
+        pass
 
 class FQI(Algorithm):
 
@@ -64,11 +70,15 @@ class FQI(Algorithm):
 
 class PBO(Algorithm):
 
-    def __init__(self, experiment, bo, K=1, incremental=False):
+    def __init__(self, experiment, bo, K=1, norm_value=2,
+                 update_index=1, update_steps=None, incremental=False):
         super().__init__(experiment)
         self.bo = bo
         self.K = K
+        self.norm_value = norm_value
         self.incremental = incremental
+        self.update_index = update_index
+        self.update_steps = K if update_steps is None else update_steps
 
     def loss(self, omega):
         with self.bo.save_params(omega), self.q.save_params():
@@ -81,7 +91,7 @@ class PBO(Algorithm):
 
                 q1 = self.q(self.SA)
                 v = q1 - self.dataset.reward - self.gamma * q0
-                loss += utils.norm(v, 2)
+                loss += utils.norm(v, self.norm_value)
         logger.debug('loss: %7d | q: %s', loss, self.q.params)
         #np.array2string(omega, max_line_width=np.inf))
         return loss
@@ -92,10 +102,12 @@ class PBO(Algorithm):
 
 class NESPBO(PBO):
 
-    def __init__(self, experiment, bo, K=1, incremental=False, batch_size=10,
-                 learning_rate=0.1, **nes_args):
-        super().__init__(experiment, bo, K)
-        self.incremental = incremental
+    def __init__(self, experiment, bo, K=1, norm_value=2,
+                 update_index=1, update_steps=None, incremental=False,
+                 batch_size=10, learning_rate=0.1, **nes_args):
+        super().__init__(experiment, bo, K=K, norm_value=norm_value,
+                         update_index=update_index, update_steps=update_steps,
+                         incremental=incremental)
         nes_args.setdefault('importanceMixing', False)
         self.best_params = self.bo.params
         self.optimizer = ExactNES(self.loss, self.best_params, minimize=True,
@@ -113,6 +125,10 @@ class NESPBO(PBO):
         self.best_loss = np.inf
         _, g_loss = self.optimizer.learn(budget)
         self.bo.params = self.best_params
-        tnext = self.bo.predict_one(self.q.params)
-        self.q.params = (self.q.params + tnext) if self.incremental else tnext
         logger.info('Global best: %f | Local best: %f', g_loss, self.best_loss)
+
+        if self.update_index > 0 and i % self.update_index == 0:
+            for _ in range(self.update_steps):
+                tnext = self.bo.predict_one(self.q.params)
+                self.q.params = (self.q.params + tnext)\
+                    if self.incremental else tnext

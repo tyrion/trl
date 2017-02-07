@@ -77,4 +77,4 @@ def norm(x, p=2):
     if p == np.inf:
         return (x ** 2).max()
     x = x if p % 2 == 0 else abs(x)
-    return  (x ** p).sum() ** (1 / p)
+    return  (x ** p).sum() ** (1. / p)
