@@ -101,8 +101,8 @@ class GradPBO(Algorithm):
     def run(self, n=10, budget=None):
         d = self.dataset
         theta0 = self.q.regressor.params.reshape(1, -1)
-        self.history = self.pbo.fit(d.state, d.action, d.next_state, d.reward, theta0,
-                                    self.batch_size, n, verbose=0)
+        self.history = self.pbo.fit(d.state, d.action, d.next_state, d.reward,
+                                    d.absorbing, theta0, self.batch_size, n)
         thetaf = self.pbo.learned_theta_value[0]
         self.q.regressor.params = thetaf
 
