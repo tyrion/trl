@@ -102,11 +102,14 @@ def norm(x, p=2):
 
 
 
-def t_make_inputs(inputs):
-    return [Input(v.get_value().shape, name=v.name) for v in inputs]
+def t_make_inputs(inputs, dtype=theano.config.floatX):
+    return [Input(v.get_value().shape, name=v.name, dtype=dtype) for v in
+            inputs]
 
 
 def k_concat(inputs):
+    if len(inputs) == 1:
+        return inputs
     fn = lambda v, s: v if len(s) <3 else Reshape((np.prod(s[1:]),))(v)
     return merge([fn(v, v._keras_shape) for v in inputs], mode='concat')
 
