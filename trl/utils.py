@@ -12,6 +12,7 @@ from trl import evaluation
 
 
 logger = logging.getLogger(__name__)
+floatX = theano.config.floatX
 
 
 def make_grid(x: np.ndarray, y: np.ndarray) -> np.ndarray:
@@ -33,23 +34,30 @@ def rec_to_array(recarray: np.rec.array) -> np.ndarray:
     return d.reshape((nrows, len(d) // nrows))
 
 
-def discretize_space(space: gym.Space, max=3):
-    floatX = theano.config.floatX
+def linspace(start, stop, num=50, endpoint=True, retstep=False, dtype=floatX):
+    """
+    Linspace with support for multidimensional arrays.
+    """
+    start = np.asanyarray(start)
+    stop = np.asanyarray(stop)
+    assert start.shape == stop.shape
+
+    div = (num - 1) if endpoint else num
+
+    shape = (num,) + start.shape
+    step = (stop - start) / div
+    data = np.tile(step.ravel(), num).reshape(shape)
+    data = (data.T * np.arange(0, num)).T + start
+    return (data, step) if retstep else data
+
+
+def discretize_space(space: gym.Space, max=20):
     if isinstance(space, spaces.Discrete):
         return np.arange(space.n, dtype=floatX)
 
     if isinstance(space, spaces.Box):
-        if space.shape[0] > 1:
-            discretized_space = np.zeros((space.shape[0], max))
-            for i in range(space.shape[0]):
-                discretized_space[i, :] = np.linspace(space.low[i],
-                                                      space.high[i],
-                                                      max,
-                                                      dtype=floatX)
-
-            return cartesian(discretized_space.tolist())
-        else:
-            return np.linspace(space.low, space.high, max, dtype=floatX)
+        d = linspace(space.low, space.high, max, dtype=floatX)
+        return d.ravel() if space.shape == (1,) else d
 
     # ifqi's DiscreteValued
     try:
