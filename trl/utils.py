@@ -1,6 +1,7 @@
 import logging
 from contextlib import closing
 
+from sklearn.utils.extmath import cartesian
 import h5py
 import numpy as np
 import gym
@@ -38,8 +39,17 @@ def discretize_space(space: gym.Space, max=20):
         return np.arange(space.n, dtype=floatX)
 
     if isinstance(space, spaces.Box):
-        # only 1D Box supported
-        return np.linspace(space.low, space.high, max, dtype=floatX)
+        if space.shape[0] > 1:
+            discretized_space = np.zeros((space.shape[0], max))
+            for i in range(space.shape[0]):
+                discretized_space[i, :] = np.linspace(space.low[i],
+                                                      space.high[i],
+                                                      max,
+                                                      dtype=floatX)
+
+            return cartesian(discretized_space.tolist())
+        else:
+            return np.linspace(space.low, space.high, max, dtype=floatX)
 
     # ifqi's DiscreteValued
     try:
