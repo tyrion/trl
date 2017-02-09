@@ -1,22 +1,9 @@
-import logging
-import logging.config
-import os
 import sys
 
-os.environ.setdefault('KERAS_BACKEND', 'theano')
-
 import pytest
-import theano
-
-floatX = theano.config.floatX
-import keras  # this will override theano.config.floatX
-
-# respect theano settings.
-keras.backend.set_floatx(floatX)
-theano.config.floatX = floatX
-
 import numpy as np
 import numdifftools as nd
+import theano
 from theano import tensor as T
 
 from ifqi import envs
@@ -24,33 +11,6 @@ from ifqi import envs
 from trl import algorithms, regressor, utils
 from trl.algorithms import ifqi
 from trl.experiment import Experiment
-
-LOGGING = {
-    'version': 1,
-    'formatters': {
-        'default': {
-            'format': '%(asctime)s %(levelname)5s:%(name)s: %(message)s',
-        },
-    },
-    'handlers': {
-        'console': {
-            'class': 'logging.StreamHandler',
-            'level': 'INFO',
-            'formatter': 'default',
-        },
-    },
-    'loggers': {
-        'trl': {
-            'level': 'DEBUG',
-        },
-    },
-    'root': {
-        'level': 'DEBUG',  # debug
-        'handlers': ['console'],
-    },
-}
-
-logging.config.dictConfig(LOGGING)
 
 
 class FakeRequest():
@@ -93,7 +53,7 @@ class BaseExperiment(Experiment):
     budget = 1
 
     def get_q(self):
-        return CurveFitQRegressor(np.array([0, 0], dtype=floatX))
+        return CurveFitQRegressor(np.array([0, 0], dtype=theano.config.floatX))
 
     def get_algorithm_config(self):
         # bo needs to be created here due to seed settings.

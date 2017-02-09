@@ -1,19 +1,7 @@
-import os
-
-os.environ.setdefault('KERAS_BACKEND', 'theano')
-
 import pytest
-import theano
-
-floatX = theano.config.floatX
-import keras # this will override theano.config.floatX
-
-# respect theano settings.
-keras.backend.set_floatx(floatX)
-theano.config.floatX = floatX
-
 import numpy as np
 import numdifftools as nd
+import theano
 from theano import tensor as T
 
 from ifqi import envs
@@ -21,11 +9,16 @@ from ifqi import envs
 from trl import algorithms, regressor, utils
 from trl.experiment import Experiment
 
+floatX = theano.config.floatX
+
+
 class FakeRequest():
     param = None
 
+
 def bellmanop(rho, theta):
     return theta.dot(rho)
+
 
 def lqr_reg(s, a, theta):
     b = theta[0]
