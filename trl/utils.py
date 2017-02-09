@@ -103,8 +103,9 @@ def norm(x, p=2):
 
 
 def t_make_inputs(inputs, dtype=theano.config.floatX):
-    return [Input(v.get_value().shape, name=v.name, dtype=dtype) for v in
-            inputs]
+    # ndim(input) = ndim(v) + 1 to account for batch size
+    return [Input(shape=v.get_value().shape, name=v.name, dtype=dtype)
+            for v in inputs]
 
 
 def k_concat(inputs):
