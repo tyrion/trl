@@ -91,17 +91,17 @@ def build_nn(input_dim=2, output_dim=2, activation='sigmoid'):
     return regressor.KerasRegressor(model, input_dim)
 
 
-def build_nn2(input_dim=2, output_dim=2, activation='sigmoid'):
+def build_nn2(input_dim=2, output_dim=2, activation='tanh'):
     from keras.models import Sequential
     from keras.layers import Dense
     from keras import callbacks
 
-    cb = callbacks.EarlyStopping(monitor='loss', min_delta=1e-2,
+    cb = callbacks.EarlyStopping(monitor='loss', min_delta=1e-3,
                                  patience=5, mode='auto')
 
     model = Sequential()
-    model.add(Dense(10, input_dim=input_dim, init='glorot_uniform', activation=activation))
-    model.add(Dense(10, init='glorot_uniform', activation=activation))
+    model.add(Dense(8, input_dim=input_dim, init='glorot_uniform', activation=activation))
+    model.add(Dense(8, init='glorot_uniform', activation=activation))
     model.add(Dense(output_dim, init='uniform', activation='linear'))
     model.compile(loss='mse', optimizer='rmsprop')
     return regressor.KerasRegressor(model, input_dim, callbacks=[cb],

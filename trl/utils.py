@@ -33,7 +33,7 @@ def rec_to_array(recarray: np.rec.array) -> np.ndarray:
     return d.reshape((nrows, len(d) // nrows))
 
 
-def discretize_space(space: gym.Space, max=20):
+def discretize_space(space: gym.Space, max=3):
     floatX = theano.config.floatX
     if isinstance(space, spaces.Discrete):
         return np.arange(space.n, dtype=floatX)
