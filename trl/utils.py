@@ -1,12 +1,14 @@
 import logging
 from contextlib import closing
 
-from sklearn.utils.extmath import cartesian
 import h5py
 import numpy as np
 import gym
 import theano
 from gym import spaces
+from keras import backend as K
+from keras.engine.topology import Layer
+from keras.layers import Input, Reshape, merge
 
 from trl import evaluation
 
@@ -96,3 +98,50 @@ def norm(x, p=2):
         return (x ** 2).max()
     x = x if p % 2 == 0 else abs(x)
     return  (x ** p).sum() ** (1. / p)
+
+
+
+def t_make_inputs(inputs):
+    return [Input(v.get_value().shape, name=v.name) for v in inputs]
+
+
+def k_concat(inputs):
+    fn = lambda v, s: v if len(s) <3 else Reshape((np.prod(s[1:]),))(v)
+    return merge([fn(v, v._keras_shape) for v in inputs], mode='concat')
+
+
+class Split(Layer):
+    """
+    >>> inputs = t_make_inputs(q.trainable_weights)
+    >>> c = k_concat(inputs)
+
+    >>> d1 = Dense(10, init='uniform', activation='sigmoid', name='d1')(c)
+    >>> d2 = Dense(10, init='uniform', activation='linear', name='d2')(d1)
+
+    >>> o = Split(inputs)(d2)
+
+    >>> model = Model(input=inputs, output=o)
+    """
+    def __init__(self, original, **kw):
+        self.original = original
+        super().__init__(**kw)
+
+    def _call(self, x):
+        i = j = 0
+        for v in self.original:
+            shape = v._keras_shape[1:]
+            print(shape)
+            j += np.prod(shape)
+            v = x[:, i:j]
+            yield v if len(shape) < 2 else K.reshape(v, (-1,) + shape)
+            #yield v
+            i = j
+
+    def call(self, x, mask=None):
+        return list(self._call(x))
+
+    def get_output_shape_for(self, input_shape):
+        return [v.shape for v in self.original]
+
+    def compute_mask(self, input, input_mask=None):
+        return [None] * len(self.original)
