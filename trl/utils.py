@@ -40,16 +40,17 @@ def linspace(start, stop, num=50, endpoint=True, retstep=False, dtype=floatX):
     """
     Linspace with support for multidimensional arrays.
     """
-    start = np.asanyarray(start)
-    stop = np.asanyarray(stop)
+    start = np.asanyarray(start, dtype)
+    stop = np.asanyarray(stop, dtype)
     assert start.shape == stop.shape
 
-    div = (num - 1) if endpoint else num
+    div = np.asanyarray((num - 1) if endpoint else num, dtype)
 
     shape = (num,) + start.shape
     step = (stop - start) / div
+
     data = np.tile(step.ravel(), num).reshape(shape)
-    data = (data.T * np.arange(0, num)).T + start
+    data = (data.T * np.arange(0, num, dtype=dtype)).T + start
     return (data, step) if retstep else data
 
 
