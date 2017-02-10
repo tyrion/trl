@@ -257,7 +257,7 @@ class KerasRegressor(SymbolicRegressor):
         return history
 
     def predict(self, x):
-        x = x.reshape(-1, self.input_dim)
+        # x = x.reshape(-1, self.input_dim)
         x = x if self.scaler_x is None else self.scaler_x.transform(x)
 
         y = self._model.predict(x)
