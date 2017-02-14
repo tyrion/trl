@@ -162,7 +162,7 @@ class GradPBO(GradientAlgorithm):
         n = self.t_dataset.shape[0]
         n_actions = len(self.actions)
 
-        y = self.q.model(self.t_s1a, theta).reshape((n, n_actions))
+        y = self.q.model([self.t_s1a], [theta])[0].reshape((n, n_actions))
         y = y * (1 - self.t_absorbing)[:, np.newaxis]
 
         return y.max(axis=1)
@@ -170,10 +170,10 @@ class GradPBO(GradientAlgorithm):
     def t_loss(self, theta, loss=ZERO):
         maxq = self.t_max_q(theta[0])
 
-        tnext = self.bo.model(theta)
+        tnext = self.bo.model([theta])[0]
         theta = (theta + tnext) if self.incremental else tnext
 
-        qpbo = self.q.model(self.t_sa, theta[0])
+        qpbo = self.q.model([self.t_sa], [theta[0]])[0]
         v = qpbo - self.t_r - self.gamma * maxq
         return theta, loss + utils.norm(v, self.norm_value)
 

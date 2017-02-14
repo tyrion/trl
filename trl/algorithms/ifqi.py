@@ -71,8 +71,18 @@ class GradPBO(Algorithm):
 
         def model(self, s, a, omega):
             sa = theano.tensor.stack((s, a), 1)
-            q = self.regressor.model(sa, omega[0])
-            return q.ravel()
+            q = self.regressor.model([sa], [omega[0]])
+            return q[0].ravel()
+
+    class BO:
+        def __init__(self, regressor):
+            self.regressor = regressor
+
+        def model(self, inputs):
+            return self.regressor.model([inputs])[0]
+
+        def __getattr__(self, key):
+            return getattr(self.regressor, key)
 
     def __init__(self, experiment, bo, K=1, optimizer='adam', batch_size=10,
                  norm_value=2, update_index=1, update_steps=None,
@@ -81,7 +91,7 @@ class GradPBO(Algorithm):
 
         self.q = self.Q(self.q)
         self.pbo = gradpbo.GradPBO(
-            bellman_model=bo,
+            bellman_model=self.BO(bo),
             q_model=self.q,
             state_dim=experiment.state_dim,
             action_dim=experiment.action_dim,

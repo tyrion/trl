@@ -4,8 +4,10 @@ from contextlib import contextmanager
 import base64
 import copy
 import io
+import itertools
 import logging
 import pickle
+from typing import List, Iterable
 
 import numpy as np
 import h5py
@@ -136,7 +138,9 @@ class SymbolicRegressor(Regressor):
     """
 
     @abstractmethod
-    def model(self, inputs, params):
+    def model(self,
+              inputs: Iterable[TensorVariable],
+              params: Iterable[TensorVariable] = None) -> List[TensorVariable]:
         """
         inputs and params can be a list of tensors or a single tensor.
         Returns the output of the model given the supplied inputs and params
@@ -153,9 +157,8 @@ class TheanoRegressor(SymbolicRegressor):
         self._params = p = theano.shared(params, self.PARAMS_NAME,
                                          allow_downcast=True)
         self.trainable_weights = [p]
-        i = self.get_inputs()
-        self.inputs = to_list(i)
-        self.outputs = to_list(self.model(i))
+        self.inputs = to_list(self.get_inputs())
+        self.outputs = self.model(self.inputs)
         self.predict = self.compile()
 
     def get_inputs(self):
@@ -181,8 +184,9 @@ class TheanoRegressor(SymbolicRegressor):
         raise NotImplementedError
 
     def model(self, inputs, params=None):
-        params = self._params if params is None else params
-        return self._model(inputs, params)
+        params = self.trainable_weights if params is None else params
+        o = self._model(*itertools.chain(inputs, params))
+        return o if isinstance(o, list) else [o]
 
     # compatibility with ifqi
     n_inputs = lambda self: len(self.inputs)
@@ -265,12 +269,11 @@ class KerasRegressor(SymbolicRegressor):
 
         return y
 
-    def model(self, inputs, params=()):
-        inputs = [inputs] if isinstance(inputs, TensorVariable) else inputs
+    def model(self, inputs, params=None):
+        params = () if params is None else params
         replace = dict(zip(self.inputs, inputs))
         replace.update(zip(self.trainable_weights, params))
-        o = theano.clone(self.outputs, replace)
-        return o[0] if len(o) == 1 else o
+        return theano.clone(self.outputs, replace)
 
     def get_config(self):
         config = copy.deepcopy(self.fit_kwargs)
