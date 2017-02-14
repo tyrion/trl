@@ -99,13 +99,18 @@ class GenGradFQI(GradientAlgorithm):
         self.history["theta"].append(self.q.params)
 
 
+def zip_sum(a, b):
+    return [x + y for x, y in zip(a, b)]
+
+
+
 class GradPBO(GradientAlgorithm):
     def __init__(self, experiment, bo, K=1, optimizer='adam', batch_size=10,
                  norm_value=2, update_index=1, update_steps=None,
                  incremental=False, independent=False):
-        super().__init__(experiment, optimizer, batch_size, norm_value, update_index)
-        assert len(bo.inputs) == 1
-        assert len(bo.outputs) == 1
+        super().__init__(experiment, optimizer, batch_size, norm_value,
+                         update_index)
+        assert len(bo.inputs) == len(bo.outputs) == len(self.q.trainable_weights)
 
         self.bo = bo
         self.K = K
@@ -132,12 +137,12 @@ class GradPBO(GradientAlgorithm):
 
         self.t_s1a = t_make_grid(self.t_s_next, self.t_actions)
 
-        t_theta0 = bo.inputs[0]
-        t_thetas = [t_theta0]
+        t_theta0 = bo.inputs
 
         if not independent:
             loss = self.t_k_loss(t_theta0)
         else:
+            raise NotImplementedError()
             loss = self.t_loss(t_theta0)[1]
             for i in range(1, K):
                 # XXX shouldn't this be 'dmatrix'?
@@ -146,40 +151,46 @@ class GradPBO(GradientAlgorithm):
                 loss += self.t_loss(theta_i)[1]
             assert len(t_thetas) == K
 
-        self.t_input = [t_d] + t_thetas
+        self.t_input = [t_d] + t_theta0
         self.t_output = loss
-        self.compile(bo.trainable_weights, self.t_input, loss)
+        self.compile(bo.trainable_weights, self.t_input, self.t_output)
 
         # Variables needed during execution
         self.data = [utils.rec_to_array(self.dataset)]
-        self.theta0 = np.array(self.q.params).reshape(1, -1)
-        self.apply_bo = (lambda t: t + bo(t)) if incremental else bo
-        self.update_thetas = (lambda t: [t]) if not independent else \
-                             (lambda t: apply(self.apply_bo, K, t))
+        #self.theta0 = np.array(self.q.params).reshape(1, -1)
+        self.theta0 = [w.get_value()[np.newaxis, ...] for w in
+                       self.q.trainable_weights]
+
+        # Keras does not return a list if len(output) is 1
+        bo = (lambda x: [self.bo(x)]) if len(bo.outputs) == 1 else bo
+        self.apply_bo = (lambda t: zip_sum(t, bo(t))) if incremental else bo
+        #self.update_thetas = (lambda t: [t]) if not independent else \
+        #                     (lambda t: apply(self.apply_bo, K, t))
+        self.update_thetas = lambda t: t
         self.x = self.update_thetas(self.theta0)
 
     def t_max_q(self, theta):
         n = self.t_dataset.shape[0]
         n_actions = len(self.actions)
 
-        y = self.q.model([self.t_s1a], [theta])[0].reshape((n, n_actions))
+        y = self.q.model([self.t_s1a], theta)[0].reshape((n, n_actions))
         y = y * (1 - self.t_absorbing)[:, np.newaxis]
 
         return y.max(axis=1)
 
-    def t_loss(self, theta, loss=ZERO):
-        maxq = self.t_max_q(theta[0])
+    def t_loss(self, loss, *theta):
+        maxq = self.t_max_q([t[0] for t in theta])
 
-        tnext = self.bo.model([theta])[0]
-        theta = (theta + tnext) if self.incremental else tnext
+        tnext = self.bo.model(theta)
+        theta = zip_sum(theta, tnext) if self.incremental else tnext
 
-        qpbo = self.q.model([self.t_sa], [theta[0]])[0]
+        qpbo = self.q.model([self.t_sa], [t[0] for t in theta])[0].ravel()
         v = qpbo - self.t_r - self.gamma * maxq
-        return theta, loss + utils.norm(v, self.norm_value)
+        return [loss + utils.norm(v, self.norm_value)] + theta
 
     def t_k_loss(self, theta0):
-        (_, loss), _ = theano.scan(self.t_loss, outputs_info=[theta0, ZERO],
-                                   n_steps=self.K)
+        (loss, *_), _ = theano.scan(self.t_loss, outputs_info=[ZERO] + theta0,
+                                    n_steps=self.K)
         return loss[-1]
 
     def update_inputs(self):
@@ -193,7 +204,7 @@ class GradPBO(GradientAlgorithm):
         thetaf = self.theta0
         for _ in range(100):
             thetaf = self.apply_bo(thetaf)
-        self.q.params = thetaf[0]
+        self.q.params = np.concatenate([w.ravel() for w in thetaf])
 
     def save(self, path):
         regressor.save_regressor(self.bo, path, 'bo')

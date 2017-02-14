@@ -197,7 +197,8 @@ class KerasRegressor(SymbolicRegressor):
     def __init__(self, model, input_dim=2, **fit_kwargs):
         self._model = model
         self.input_dim = input_dim
-        self._params = self._shape = None
+        self._params = None
+        self._shapes = None
         self.fit_kwargs = fit_kwargs
         fit_kwargs.setdefault('verbose', 0)
 
@@ -261,7 +262,8 @@ class KerasRegressor(SymbolicRegressor):
         return history
 
     def predict(self, x):
-        x = x.reshape(-1, self.input_dim)
+        if not isinstance(x, list):
+            x = x.reshape(-1, self.input_dim)
         x = x if self.scaler_x is None else self.scaler_x.transform(x)
 
         y = self._model.predict(x)
