@@ -43,7 +43,7 @@ LOGGING = {
 	},
     },
     'root': {
-	'level': 'DEBUG', # debug
+	'level': 'DEBUG',
 	'handlers': ['console'],
     },
 }
