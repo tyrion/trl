@@ -231,15 +231,18 @@ class GradPBO(GradientAlgorithm):
             for _ in range(self.update_steps):
                 self.theta0 = self.apply_bo(self.theta0)
             self.x = self.update_thetas(self.theta0)
+            self.real_update_steps = self.update_steps
         else:
-            loss = 0
-            prev_loss = np.inf
+            loss = prev_loss = np.inf
             theta_prime = self.theta0
+            self.real_update_steps = 0
             while loss <= prev_loss:
+                self.real_update_steps += 1
+                prev_loss = loss
                 self.theta0 = theta_prime
                 theta_prime = self.apply_bo(self.theta0)
-                prev_loss = loss
                 loss = self.update_loss(*(self.data + theta_prime))[0]
+                # logger.info("{} <= {}".format(loss, prev_loss))
             self.x = self.update_thetas(self.theta0)
 
     def run(self, n=10, budget=None):
@@ -259,3 +262,7 @@ class GradPBO(GradientAlgorithm):
     def update_history(self):
         self.history["theta"].append(self.x[0])
         self.history["rho"].append(self.bo._model.get_weights())
+        if "real_update_steps" not in self.history.keys():
+            self.history["real_update_steps"] = [0]
+        else:
+            self.history["real_update_steps"].append(self.real_update_steps)
