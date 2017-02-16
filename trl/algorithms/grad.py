@@ -182,9 +182,9 @@ class GradPBO(GradientAlgorithm):
         self.update_steps = validate_updatesteps(update_steps, K)
         if self.update_steps == np.inf:
             if update_steps == "auto_loss":
-                update_loss = self.t_loss(ZERO, t_theta0)[0]
+                update_loss = self.t_loss(ZERO, *t_theta0)[0]
             else:
-                update_loss = self.t_loss_original_be(ZERO, t_theta0)[0]
+                update_loss = self.t_loss_original_be(ZERO, *t_theta0)[0]
             self.update_loss = theano.function(
                 self.t_input, [update_loss],
                 name='update_loss', allow_input_downcast=True)
@@ -239,7 +239,7 @@ class GradPBO(GradientAlgorithm):
                 self.theta0 = theta_prime
                 theta_prime = self.apply_bo(self.theta0)
                 prev_loss = loss
-                loss = self.update_loss(*([self.data] + theta_prime))
+                loss = self.update_loss(*(self.data + theta_prime))[0]
             self.x = self.update_thetas(self.theta0)
 
     def run(self, n=10, budget=None):
