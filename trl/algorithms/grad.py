@@ -235,7 +235,7 @@ class GradPBO(GradientAlgorithm):
         else:
             loss = prev_loss = np.inf
             theta_prime = self.theta0
-            self.real_update_steps = 0
+            self.real_update_steps = -1
             while loss <= prev_loss:
                 self.real_update_steps += 1
                 prev_loss = loss
@@ -257,13 +257,11 @@ class GradPBO(GradientAlgorithm):
         regressor.save_regressor(self.bo, path, 'bo')
 
     def create_history(self):
-        self.history = {"theta":[], 'rho':[]}
+        self.history = {"theta":[], 'rho':[], 'real_update_steps': []}
+        self.real_update_steps = 0
 
     def update_history(self):
         self.history["theta"].append(self.x[0])
         self.history["rho"].append(self.bo._model.get_weights())
-        if "real_update_steps" not in self.history.keys():
-            self.history["real_update_steps"] = [0]
-        else:
-            self.history["real_update_steps"].append(self.real_update_steps)
-            logger.info(self.real_update_steps)
+        self.history["real_update_steps"].append(self.real_update_steps)
+        # logger.info(self.real_update_steps)
