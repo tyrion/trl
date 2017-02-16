@@ -1,16 +1,18 @@
+import itertools
 import logging
 import time
 
 import numpy as np
 import theano
 from theano import tensor as T
+from theano.scan_module import until
 from keras.engine.training import slice_X, batch_shuffle, make_batches
 from keras import optimizers
 
 from .base import Algorithm
 from .. import regressor, utils
 
-ZERO = np.array(0, dtype=theano.config.floatX)
+ZERO = T.constant(np.array(0, dtype=theano.config.floatX))
 logger = logging.getLogger('trl.algorithms')
 
 
@@ -36,6 +38,10 @@ def t_make_grid(x, y):
     x = T.tile(x, (1, ny)).reshape((-1, x.shape[1]))
     y = T.tile(y, (nx, 1))
     return T.concatenate((x, y), axis=-1)
+
+
+def zip_sum(a, b):
+    return [x + y for x, y in zip(a, b)]
 
 
 class GradientAlgorithm(Algorithm):
@@ -99,15 +105,10 @@ class GenGradFQI(GradientAlgorithm):
         self.history["theta"].append(self.q.params)
 
 
-def zip_sum(a, b):
-    return [x + y for x, y in zip(a, b)]
-
-
-
 class GradPBO(GradientAlgorithm):
     def __init__(self, experiment, bo, K=1, optimizer='adam', batch_size=10,
                  norm_value=2, update_index=1, update_steps=None,
-                 incremental=False, independent=False):
+                 update_loss=None, incremental=False, independent=False):
         super().__init__(experiment, optimizer, batch_size, norm_value,
                          update_index)
         assert len(bo.inputs) == len(bo.outputs) == len(self.q.trainable_weights)
@@ -115,8 +116,8 @@ class GradPBO(GradientAlgorithm):
         self.bo = bo
         self.K = K
         self.incremental = incremental
-        self.update_steps = K if update_steps is None else update_steps
         self.independent = independent
+        self.update_steps = K if update_steps is None else update_steps
 
         # Theano variables (prefixed with 't_')
         self.t_dataset = t_d = T.matrix('dataset')
@@ -142,18 +143,12 @@ class GradPBO(GradientAlgorithm):
         if not independent:
             loss = self.t_k_loss(t_theta0)
         else:
-            raise NotImplementedError()
-            loss = self.t_loss(t_theta0)[1]
-            for i in range(1, K):
-                # XXX shouldn't this be 'dmatrix'?
-                theta_i = T.matrix('theta_{}'.format(i))
-                t_thetas.append(theta_i)
-                loss += self.t_loss(theta_i)[1]
-            assert len(t_thetas) == K
+            raise NotImplementedError
 
         self.t_input = [t_d] + t_theta0
         self.t_output = loss
         self.compile(bo.trainable_weights, self.t_input, self.t_output)
+        self.compile_update_loss(self.t_input, t_theta0, update_loss)
 
         # Variables needed during execution
         self.data = [utils.rec_to_array(self.dataset)]
@@ -169,6 +164,7 @@ class GradPBO(GradientAlgorithm):
         self.update_thetas = lambda t: t
         self.x = self.update_thetas(self.theta0)
 
+
     def t_max_q(self, theta):
         n = self.t_dataset.shape[0]
         n_actions = len(self.actions)
@@ -178,24 +174,51 @@ class GradPBO(GradientAlgorithm):
 
         return y.max(axis=1)
 
-    def t_loss(self, loss, *theta):
-        maxq = self.t_max_q([t[0] for t in theta])
+    def t_loss(self, loss0, *theta0, type='auto'):
+        #loss0 = theano.printing.Print('loss0')(loss0)
+        #theta0 = [theano.printing.Print('t0')(t) for t in theta0]
+        update = self.bo.model(theta0)
+        theta1 = zip_sum(theta0, update) if self.incremental else update
+        #theta1 = [theano.printing.Print('t1')(t) for t in theta1]
 
-        tnext = self.bo.model(theta)
-        theta = zip_sum(theta, tnext) if self.incremental else tnext
+        maxq = self.t_max_q(
+            [t[0] for t in (theta1 if type == 'be' else theta0)])
 
-        qpbo = self.q.model([self.t_sa], [t[0] for t in theta])[0].ravel()
+        qpbo = self.q.model([self.t_sa], [t[0] for t in theta1])[0].ravel()
         v = qpbo - self.t_r - self.gamma * maxq
-        return [loss + utils.norm(v, self.norm_value)] + theta
+
+        loss1 = utils.norm(v, self.norm_value)
+        out = [loss0 + loss1] + theta1
+        return out
 
     def t_k_loss(self, theta0):
         (loss, *_), _ = theano.scan(self.t_loss, outputs_info=[ZERO] + theta0,
                                     n_steps=self.K)
         return loss[-1]
 
+    def compile_update_loss(self, inputs, theta0, type):
+        if type is None:
+            fn = lambda data, *t: [np.inf] + self.apply_bo(list(t))
+        else:
+            o = self.t_loss(ZERO, *theta0, type=type)
+            fn = theano.function(inputs, o, name='update_loss')
+        self.update_loss = fn
+
     def update_inputs(self):
-        for _ in range(self.update_steps):
-            self.theta0 = self.apply_bo(self.theta0)
+        steps = self.update_steps
+        it = itertools.count() if steps == np.inf else range(steps)
+
+        prev_loss = np.inf
+        theta0 = self.theta0
+        for i in it:
+            loss, *theta1 = self.update_loss(*(self.data + theta0))
+            if loss > prev_loss:
+                break
+            prev_loss = loss
+            theta0 = theta1
+
+        #print(i, end=',')
+        self.theta0 = theta0
         self.x = self.update_thetas(self.theta0)
 
     def run(self, n=10, budget=None):
