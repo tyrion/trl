@@ -107,7 +107,7 @@ def zip_sum(a, b):
 class GradPBO(GradientAlgorithm):
     def __init__(self, experiment, bo, K=1, optimizer='adam', batch_size=10,
                  norm_value=2, update_index=1, update_steps=None,
-                 incremental=False, independent=False):
+                 incremental=False, independent=False, bellman_error_loss=False):
         super().__init__(experiment, optimizer, batch_size, norm_value,
                          update_index)
         assert len(bo.inputs) == len(bo.outputs) == len(self.q.trainable_weights)
@@ -117,6 +117,7 @@ class GradPBO(GradientAlgorithm):
         self.incremental = incremental
         self.update_steps = K if update_steps is None else update_steps
         self.independent = independent
+        self.bellman_error_loss = bellman_error_loss
 
         # Theano variables (prefixed with 't_')
         self.t_dataset = t_d = T.matrix('dataset')
@@ -188,15 +189,40 @@ class GradPBO(GradientAlgorithm):
         v = qpbo - self.t_r - self.gamma * maxq
         return [loss + utils.norm(v, self.norm_value)] + theta
 
-    def t_k_loss(self, theta0):
-        (loss, *_), _ = theano.scan(self.t_loss, outputs_info=[ZERO] + theta0,
-                                    n_steps=self.K)
+    def t_loss2(self, loss, *theta):
+        tnext = self.bo.model(theta)
+        theta = zip_sum(theta, tnext) if self.incremental else tnext
+
+        maxq = self.t_max_q([t[0] for t in theta])
+
+        qpbo = self.q.model([self.t_sa], [t[0] for t in theta])[0].ravel()
+        v = qpbo - self.t_r - self.gamma * maxq
+        return [loss + utils.norm(v, self.norm_value)] + theta
+
+    def t_k_loss(self, theta0, updating_theta=False):
+        k = 1 if updating_theta else self.K
+        if self.bellman_error_loss:
+            loss_fun = self.t_loss2
+        else:
+            loss_fun = self.t_loss
+        (loss, *_), _ = theano.scan(loss_fun,
+                                    outputs_info=[ZERO] + theta0,
+                                    n_steps=k)
         return loss[-1]
 
     def update_inputs(self):
-        for _ in range(self.update_steps):
-            self.theta0 = self.apply_bo(self.theta0)
-        self.x = self.update_thetas(self.theta0)
+        if self.update_steps < np.inf:
+            for _ in range(self.update_steps):
+                self.theta0 = self.apply_bo(self.theta0)
+            self.x = self.update_thetas(self.theta0)
+        else:
+            loss = 0
+            prev_loss = np.inf
+            while loss <= prev_loss:
+                self.theta0 = self.apply_bo(self.theta0)
+                prev_loss = loss
+                loss = self.t_k_loss(self.theta0, True)
+            self.x = self.update_thetas(self.theta0)
 
     def run(self, n=10, budget=None):
         super().run(n, budget)
