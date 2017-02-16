@@ -266,3 +266,4 @@ class GradPBO(GradientAlgorithm):
             self.history["real_update_steps"] = [0]
         else:
             self.history["real_update_steps"].append(self.real_update_steps)
+            logger.info(self.real_update_steps)
