@@ -103,11 +103,22 @@ def zip_sum(a, b):
     return [x + y for x, y in zip(a, b)]
 
 
+def validate_updatesteps(update_steps, K):
+    if not isinstance(update_steps, int):
+        assert update_steps in [None, "auto_loss", "auto_be"]
+
+        if update_steps is None:
+            return K
+        else:
+            return np.inf
+    else:
+        return update_steps
+
 
 class GradPBO(GradientAlgorithm):
     def __init__(self, experiment, bo, K=1, optimizer='adam', batch_size=10,
                  norm_value=2, update_index=1, update_steps=None,
-                 incremental=False, independent=False, bellman_error_loss=False):
+                 incremental=False, independent=False):
         super().__init__(experiment, optimizer, batch_size, norm_value,
                          update_index)
         assert len(bo.inputs) == len(bo.outputs) == len(self.q.trainable_weights)
@@ -115,9 +126,7 @@ class GradPBO(GradientAlgorithm):
         self.bo = bo
         self.K = K
         self.incremental = incremental
-        self.update_steps = K if update_steps is None else update_steps
         self.independent = independent
-        self.bellman_error_loss = bellman_error_loss
 
         # Theano variables (prefixed with 't_')
         self.t_dataset = t_d = T.matrix('dataset')
@@ -170,6 +179,18 @@ class GradPBO(GradientAlgorithm):
         self.update_thetas = lambda t: t
         self.x = self.update_thetas(self.theta0)
 
+        self.update_steps = validate_updatesteps(update_steps, K)
+        if self.update_steps == np.inf:
+            if update_steps == "auto_loss":
+                update_loss = self.t_loss(ZERO, t_theta0)[0]
+            else:
+                update_loss = self.t_loss_original_be(ZERO, t_theta0)[0]
+            self.update_loss = theano.function(
+                self.t_input, [update_loss],
+                name='update_loss', allow_input_downcast=True)
+        else:
+            self.update_loss = None
+
     def t_max_q(self, theta):
         n = self.t_dataset.shape[0]
         n_actions = len(self.actions)
@@ -189,7 +210,7 @@ class GradPBO(GradientAlgorithm):
         v = qpbo - self.t_r - self.gamma * maxq
         return [loss + utils.norm(v, self.norm_value)] + theta
 
-    def t_loss2(self, loss, *theta):
+    def t_loss_original_be(self, loss, *theta):
         tnext = self.bo.model(theta)
         theta = zip_sum(theta, tnext) if self.incremental else tnext
 
@@ -199,15 +220,10 @@ class GradPBO(GradientAlgorithm):
         v = qpbo - self.t_r - self.gamma * maxq
         return [loss + utils.norm(v, self.norm_value)] + theta
 
-    def t_k_loss(self, theta0, updating_theta=False):
-        k = 1 if updating_theta else self.K
-        if self.bellman_error_loss:
-            loss_fun = self.t_loss2
-        else:
-            loss_fun = self.t_loss
-        (loss, *_), _ = theano.scan(loss_fun,
+    def t_k_loss(self, theta0):
+        (loss, *_), _ = theano.scan(self.t_loss,
                                     outputs_info=[ZERO] + theta0,
-                                    n_steps=k)
+                                    n_steps=self.K)
         return loss[-1]
 
     def update_inputs(self):
@@ -218,10 +234,12 @@ class GradPBO(GradientAlgorithm):
         else:
             loss = 0
             prev_loss = np.inf
+            theta_prime = self.theta0
             while loss <= prev_loss:
-                self.theta0 = self.apply_bo(self.theta0)
+                self.theta0 = theta_prime
+                theta_prime = self.apply_bo(self.theta0)
                 prev_loss = loss
-                loss = self.t_k_loss(self.theta0, True)
+                loss = self.update_loss(*([self.data] + theta_prime))
             self.x = self.update_thetas(self.theta0)
 
     def run(self, n=10, budget=None):
