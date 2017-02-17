@@ -182,9 +182,9 @@ class GradPBO(GradientAlgorithm):
         self.update_steps = validate_updatesteps(update_steps, K)
         if self.update_steps == np.inf:
             if update_steps == "auto_loss":
-                update_loss = self.t_loss(ZERO, t_theta0)[0]
+                update_loss = self.t_loss(ZERO, *t_theta0)[0]
             else:
-                update_loss = self.t_loss_original_be(ZERO, t_theta0)[0]
+                update_loss = self.t_loss_original_be(ZERO, *t_theta0)[0]
             self.update_loss = theano.function(
                 self.t_input, [update_loss],
                 name='update_loss', allow_input_downcast=True)
@@ -231,15 +231,18 @@ class GradPBO(GradientAlgorithm):
             for _ in range(self.update_steps):
                 self.theta0 = self.apply_bo(self.theta0)
             self.x = self.update_thetas(self.theta0)
+            self.real_update_steps = self.update_steps
         else:
-            loss = 0
-            prev_loss = np.inf
+            loss = prev_loss = np.inf
             theta_prime = self.theta0
+            self.real_update_steps = -1
             while loss <= prev_loss:
+                self.real_update_steps += 1
+                prev_loss = loss
                 self.theta0 = theta_prime
                 theta_prime = self.apply_bo(self.theta0)
-                prev_loss = loss
-                loss = self.update_loss(*([self.data] + theta_prime))
+                loss = self.update_loss(*(self.data + theta_prime))[0]
+                # logger.info("{} <= {}".format(loss, prev_loss))
             self.x = self.update_thetas(self.theta0)
 
     def run(self, n=10, budget=None):
@@ -254,8 +257,11 @@ class GradPBO(GradientAlgorithm):
         regressor.save_regressor(self.bo, path, 'bo')
 
     def create_history(self):
-        self.history = {"theta":[], 'rho':[]}
+        self.history = {"theta":[], 'rho':[], 'real_update_steps': []}
+        self.real_update_steps = 0
 
     def update_history(self):
         self.history["theta"].append(self.x[0])
         self.history["rho"].append(self.bo._model.get_weights())
+        self.history["real_update_steps"].append(self.real_update_steps)
+        # logger.info(self.real_update_steps)
