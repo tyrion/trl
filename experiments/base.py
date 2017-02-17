@@ -64,7 +64,7 @@ class CurveFitQRegressor(regressor.TheanoRegressor):
         self.params, pcov = curve_fit(self.Q, x, y, p0=self.params - 0.0001)
 
     def Q(self, sa, b, k):
-        return self.model(sa, [b, k])
+        return self._model(sa, [b, k])
 
     def _model(self, sa, theta):
         s = sa[:, 0]
