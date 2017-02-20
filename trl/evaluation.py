@@ -120,6 +120,7 @@ class Interact:
                 trace.metrics = [m(episode) for m in self.metrics]
 
             logger.info('Episode %3d: %s', e, trace)
+        self.dataset = self.dataset[:i]
 
 
 def interact(env, n=1, horizon=100, policy=None, collect=False,

@@ -82,6 +82,9 @@ class GradientAlgorithm(Algorithm):
             if self.update_index > 0 and i % self.update_index == 0:
                 self.update_inputs()
 
+        if self.update_index == -1:
+            self.update_inputs()
+
 
 class GenGradFQI(GradientAlgorithm):
     def __init__(self, experiment, optimizer='adam', batch_size=10,
