@@ -56,7 +56,7 @@ def linspace(start, stop, num=50, endpoint=True, retstep=False, dtype=floatX):
 
 def discretize_space(space: gym.Space, max=20):
     if isinstance(space, spaces.Discrete):
-        return np.arange(space.n, dtype=floatX)
+        return np.arange(space.n)
 
     if isinstance(space, spaces.Box):
         d = linspace(space.low, space.high, max, dtype=floatX)
