@@ -110,10 +110,10 @@ class Interact:
                 episode[t] = (state, action, reward, next_state, absorbing, 0)
                 logger.debug(episode[t])
 
+                state = next_state
                 if absorbing:
                     episode = episode[:t+1]
                     break
-                state = next_state
             episode[t].done = True
 
             t += 1
