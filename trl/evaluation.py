@@ -44,9 +44,14 @@ class Interact:
             try:
                 env.reset(n[0])
             except TypeError:
-                logging.warning('The env does not support setting the state. '
-                                'Trying with `env.state = state`')
-                _reset = lambda s: (setattr(self, 'state', s), s)[1]
+                unw = env.unwrapped
+                key = 'state'
+                if not hasattr(unw, key):
+                    raise
+
+                logging.warning('The env does not support setting the '
+                                'state. Trying with `env.state = state`')
+                _reset = lambda s: (env.reset(), setattr(unw, key, s), s)[2]
             else:
                 _reset = env.reset
             self.reset = lambda: _reset(n[self.e])
