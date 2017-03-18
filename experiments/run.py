@@ -33,6 +33,7 @@ if __name__ == '__main__':
         help='Number of episodes to use for evaluation.')
     parser.add_argument('-h', '--horizon', type=int, metavar='N',
         help='Max number of steps per episode.')
+    parser.add_argument('--gamma', type=float, metavar='N', default=argparse.SUPPRESS)
     parser.add_argument('-b', '--budget', type=int, help='budget', metavar='N')
 
     io = parser.add_argument_group('io', 'Load/Save')
