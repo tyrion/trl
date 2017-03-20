@@ -49,7 +49,7 @@ class Interact:
                 if not hasattr(unw, key):
                     raise
 
-                logging.warning('The env does not support setting the '
+                logger.warning('The env does not support setting the '
                                 'state. Trying with `env.state = state`')
                 _reset = lambda s: (env.reset(), setattr(unw, key, s), s)[2]
             else:
