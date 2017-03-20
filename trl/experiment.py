@@ -110,6 +110,7 @@ class Experiment:
         self.trace = None
         self.summary = None
 
+        self.seed(3)
         if self.use_action_regressor:
             self.input_dim = self.state_dim
             self.q = regressor.ActionRegressor(self.get_q(), self.actions)
