@@ -89,10 +89,12 @@ def gradpbo_params():
         yield name, config, algo_config
 
 
-def fqi():
+def fqi_params():
     experiments = list(range(1, 21))
     for n in experiments:
         yield 'n{:02}'.format(n), {'training_iterations': n}, {}
+
+ifqi_fqi_params = fqi_params
 
 
 parser = argparse.ArgumentParser(add_help=True)
