@@ -121,7 +121,7 @@ if args.create_dataset:
     seeds = Experiment.run_many(N, make_dataset, env_name=args.env_name,
                                 workers=args.workers)
 
-    ordered_seeds = np.zeros((N, 2))
+    ordered_seeds = np.zeros((N, 2), 'uint64')
     for i in range(N):
         ordered_seeds[i] = seeds[i]
     utils.save_dataset(ordered_seeds, 'seeds.h5')
