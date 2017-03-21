@@ -118,7 +118,6 @@ class Experiment:
             self.input_dim = self.state_dim + self.action_dim
             self.q = self.get_q()
 
-
         if self.training_iterations <= 0:
             logger.info('Skipping training.')
         else:
@@ -167,12 +166,11 @@ class Experiment:
         try:
             path = self.config['dataset_load_path']
         except KeyError:
-            logger.info('Collecting training data (episodes: %d, horizon: %d)',
-                        self.training_episodes, self.horizon)
             self.seed(0)
-
             interaction = evaluation.Interact(self.env, self.training_episodes,
                                               self.horizon, collect=True)
+            logger.info('Collecting training data (episodes: %d, horizon: %d)',
+                        interaction.n, self.horizon)
             interaction.interact()
             self.env.reset()
             return interaction.dataset
