@@ -1,6 +1,7 @@
 import os
 import logging
 import logging.config
+import math
 
 os.environ.setdefault('KERAS_BACKEND', 'theano')
 
@@ -108,6 +109,45 @@ def build_nn2(input_dim=2, output_dim=2, activation='tanh'):
                                     nb_epoch=100, batch_size=100)
 
 
+def build_nn3(input_dim=2, output_dim=2, activation='sigmoid'):
+    """
+    Good for CartPole-v0
+    """
+    from keras.models import Sequential
+    from keras.layers import Dense
+    from keras import callbacks
+
+    cb = callbacks.EarlyStopping(monitor='loss', min_delta=0.58,
+                                 patience=600, mode='auto')
+
+    model = Sequential()
+    model.add(Dense(4, input_dim=input_dim, init='uniform', activation=activation))
+    model.add(Dense(output_dim, init='uniform', activation='linear'))
+    model.compile(loss='mse', optimizer='rmsprop')
+    return regressor.KerasRegressor(model, input_dim, callbacks=[cb],
+                                    nb_epoch=100, batch_size=2000)
+
+
+def build_nn4(input_dim=2, output_dim=2, activation='tanh'):
+    """
+    Good for CarOnHill-v0
+    """
+    from keras.models import Sequential
+    from keras.layers import Dense
+    from keras import callbacks
+
+    cb = callbacks.EarlyStopping(monitor='val_loss', min_delta=1e-3,
+                                 patience=20, mode='auto')
+
+    model = Sequential()
+    model.add(Dense(10, input_dim=input_dim, init='uniform', activation=activation))
+    model.add(Dense(output_dim, init='uniform', activation='linear'))
+    model.compile(loss='mse', optimizer='rmsprop')
+    return regressor.KerasRegressor(model, input_dim, callbacks=[cb],
+                                    validation_split=0.1,
+                                    nb_epoch=100, batch_size=100)
+
+
 def build_curve_fit(input_dim=2, output_dim=1):
     return CurveFitQRegressor(np.array([0.0,0.0], dtype=theano.config.floatX))
 
@@ -151,3 +191,12 @@ class CLIExperiment(Experiment):
         }
         LOGGING['root']['handlers'] = ['file']
         logging.config.dictConfig(LOGGING)
+
+    def get_training_episodes(self):
+        if self.env_name != 'CarPole-v0':
+            return super().get_training_episodes()
+        n = self.config.get('training_episodes', 2000)
+        unw = self.env.unwrapped
+        x = unw.x_threshold
+        t = 0.95 * unw.theta_threshold_radians
+        return np.random.uniform([-x, -3.5, -t, -3], [x, 3.5, t, 3], (n, 4))
