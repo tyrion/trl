@@ -94,6 +94,7 @@ def experiment(request):
     e.dataset = dataset_rec
     e.q = CurveFitQRegressor(theta0[0])
     e.seed(1)
+    e.algorithm_config = e.get_algorithm_config()
     e.algorithm = e.get_algorithm()
     e.epbo = algorithms.PBO(e, bo, K, incremental=incremental)
     return e

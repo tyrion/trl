@@ -61,16 +61,18 @@ class Experiment:
     q_save_path = None
     trace_save_path = None
 
+
+    IGNORE_CONFIG = ('gamma', 'horizon', 'algorithm_config',
+                     'training_episodes', 'evaluation_episodes')
+
     def __init__(self, **config):
+        assert config.get('initial_states') is None
         self.config = config
         self.env_name = config.pop('env_name', self.env_name)
         self.env = self.get_env()
-
-        for key in ['gamma', 'horizon', 'initial_states']:
-            config.setdefault(key, getattr(self.env, key))
-
-        self.algorithm_config = copy.deepcopy(self.algorithm_config)
-        self.algorithm_config.update(config.pop('algorithm_config', {}))
+        self.env_spec = self.env.unwrapped.spec
+        self.gamma = self.get_gamma()
+        self.horizon = self.get_horizon()
 
         self.save_path = path = config.pop('save_path', self.save_path)
         if self.save_path is not None:
@@ -79,14 +81,8 @@ class Experiment:
                     setattr(self, path, self.save_path)
 
         for key, value in config.items():
-            if hasattr(self, key):
+            if key not in self.IGNORE_CONFIG and hasattr(self.__class__, key):
                 setattr(self, key, value)
-
-        e = self.evaluation_episodes
-        if self.initial_states is not None:
-            i = len(self.initial_states)
-            if (e is None or e > i):
-                self.evaluation_episodes = i
 
         self.state_dim = utils.get_space_dim(self.env.observation_space)
         self.action_dim = utils.get_space_dim(self.env.action_space)
@@ -97,6 +93,19 @@ class Experiment:
 
     def get_env(self):
         return gym.make(self.env_name)
+
+    def _config_env_class(self, key):
+        try:
+            return self.config[key]
+        except KeyError:
+            return getattr(self.env, key, getattr(self.__class__, key))
+
+    def get_gamma(self):
+        return self._config_env_class('gamma')
+
+    def get_horizon(self):
+        return (self.env_spec.timestep_limit or
+                self._config_env_class('horizon'))
 
     def get_actions(self):
         return utils.discretize_space(self.env.action_space)
@@ -129,13 +138,9 @@ class Experiment:
             fn = self.benchmark if self.timeit else self.train
             fn()
 
-        if self.evaluation_episodes <= 0:
-            logger.info('Skipping evaluation.')
-        else:
-            logger.info('Evaluating algorithm (episodes: %d)',
-                        self.evaluation_episodes)
-            self.seed(2)
-            self.evaluate()
+        self.seed(2)
+        self.evaluation_episodes = self.get_evaluation_episodes()
+        self.evaluate()
 
         self.save()
         return (self.training_time, self.summary)
@@ -167,6 +172,7 @@ class Experiment:
             path = self.config['dataset_load_path']
         except KeyError:
             self.seed(0)
+            self.training_episodes = self.get_training_episodes()
             interaction = evaluation.Interact(self.env, self.training_episodes,
                                               self.horizon, collect=True)
             logger.info('Collecting training data (episodes: %d, horizon: %d)',
@@ -180,12 +186,24 @@ class Experiment:
     def get_q(self):
         return regressor.load_regressor(self.q_load_path, name='q')
 
+    def get_training_episodes(self):
+        return self.config.get('training_episodes',
+                               self.__class__.training_episodes)
+
     def get_algorithm_config(self):
-        # XXX not saving to self, be careful when saving the Experiment.
-        return self.algorithm_config
+        config = copy.deepcopy(self.__class__.algorithm_config)
+        config.update(self.config.get('algorithm_config', {}))
+        return config
 
     def get_algorithm(self):
         return self.algorithm_class(self, **self.algorithm_config)
+
+    def get_evaluation_episodes(self):
+        try:
+            return self.config['evaluation_episodes']
+        except KeyError:
+            return getattr(self.env, 'initial_states',
+                           self.__class__.evaluation_episodes)
 
     def train(self):
         self.algorithm.run(self.training_iterations, self.budget)
@@ -200,24 +218,27 @@ class Experiment:
     def evaluate(self):
         self.policy = evaluation.QPolicy(self.q, self.actions)
 
-        n = self.initial_states
-        n = n if n is not None else self.evaluation_episodes
-
         metrics = [evaluation.average, evaluation.discounted(self.gamma)]
-        interaction = evaluation.Interact(self.env, n, self.horizon,
-                                          self.policy, self.render, metrics)
+        interaction = evaluation.Interact(
+            self.env, self.evaluation_episodes, self.horizon, self.policy,
+            self.render, metrics)
+
+        if interaction.n <= 0:
+            logger.info('Skipping evaluation.')
+            return
+
+        logger.info('Evaluating algorithm (episodes: %d)', interaction.n)
         interaction.interact()
         self.trace = t = interaction.trace
         self.summary = np.concatenate((t.time.mean(keepdims=True),
                                        t.metrics.mean(0)))
         logger.info('Summary avg (time: %f, avgJ: %f, discountedJ: %f)',
                     *self.summary)
+        self.save_trace(self.trace_save_path)
 
     def save(self):
         # TODO save initial_states
         self.save_q(self.q_save_path)
-        if self.evaluation_episodes > 0:
-            self.save_trace(self.trace_save_path)
         if self.save_path is not None:
             if self.training_iterations > 0:
                 self.algorithm.save(self.save_path)

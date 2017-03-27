@@ -133,11 +133,12 @@ class CLIExperiment(Experiment):
         return build(input_dim=self.input_dim, output_dim=1)
 
     def get_algorithm_config(self):
+        config = super().get_algorithm_config()
         if self.algorithm_class in (algorithms.NESPBO, ifqi.PBO,
                                     algorithms.GradPBO, ifqi.GradPBO):
             dim = len(self.q.params)
-            self.algorithm_config['bo'] = build_nn(input_dim=dim, output_dim=dim)
-        return self.algorithm_config
+            config['bo'] = build_nn(input_dim=dim, output_dim=dim)
+        return config
 
     @classmethod
     def _setup(cls, i, logfile='experiment-{i}.log', **kwargs):

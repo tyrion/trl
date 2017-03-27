@@ -56,10 +56,14 @@ class BaseExperiment(Experiment):
         return CurveFitQRegressor(np.array([0, 0], dtype=theano.config.floatX))
 
     def get_algorithm_config(self):
+        config = super().get_algorithm_config()
         # bo needs to be created here due to seed settings.
         ndim = len(self.q.params)
-        self.algorithm_config['bo'] = build_nn(ndim, ndim)
-        return self.algorithm_config
+        config['bo'] = build_nn(ndim, ndim)
+        return config
+
+    def get_evaluation_episodes(self):
+        return 2
 
 
 @pytest.fixture
