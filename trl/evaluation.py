@@ -30,7 +30,8 @@ class RandomPolicy:
         return self.sampler()
 
 
-class Interact:
+
+class Interaction:
 
     def __init__(self, env, n=1, horizon=None, policy=None, collect=True,
                  metrics=(), render=False):
@@ -60,6 +61,7 @@ class Interact:
         self.state_dim = utils.get_space_dim(self.env.observation_space)
         self.action_dim = utils.get_space_dim(self.env.action_space)
 
+        # FIXME
         self.horizon = horizon or getattr(env, 'horizon', 100)
         self.policy = RandomPolicy(env) if policy is None else policy
         self.collect = collect
@@ -91,7 +93,7 @@ class Interact:
     def __iter__(self):
         return iter(self.trace)
 
-    def interact(self):
+    def run(self):
         i = 0
         for e in range(self.n):
             self.e = e

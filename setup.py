@@ -57,4 +57,8 @@ setup(
             'Numdifftools>=0.9.20',
         ],
     },
+    entry_points='''
+        [console_scripts]
+        trl=trl.cli:main
+    ''',
 )

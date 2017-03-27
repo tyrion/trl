@@ -1,11 +1,12 @@
+import abc
 import logging
 import warnings
 
+import click
 import numpy as np
 from pybrain.optimization import ExactNES
 
-from .. import regressor, utils
-from ..experiment import Experiment
+from trl import cli, evaluation, regressor, utils
 
 
 # pybrain is giving a lot of deprecation warnings
@@ -14,13 +15,29 @@ warnings.filterwarnings('ignore', module='pybrain')
 logger = logging.getLogger('trl.algorithms')
 
 
-class Algorithm:
-    def __init__(self, experiment: Experiment):
-        self.dataset = experiment.dataset
-        self.actions = experiment.actions
-        self.gamma = experiment.gamma
-        self.q = experiment.q
-        self.experiment = experiment
+class AlgorithmMeta(abc.ABCMeta):
+    registry = {}
+
+    def __new__(mcls, name, bases, namespace):
+        cls = super().__new__(mcls, name, bases, namespace)
+        if (any(b for b in bases if isinstance(b, mcls)) and
+            not cls.__abstractmethods__):
+            mcls.registry[cls.cli_name] = cls
+
+        return cls
+
+    @property
+    def cli_name(cls):
+        return cls.__name__.lower()
+
+
+class Algorithm(metaclass=AlgorithmMeta):
+
+    def __init__(self, q, dataset, actions, gamma):
+        self.dataset = dataset
+        self.actions = actions
+        self.gamma = gamma
+        self.q = q
         self.S1A = utils.make_grid(self.dataset.next_state, self.actions)
         self.SA = utils.rec_to_array(self.dataset[['state', 'action']])
 
@@ -35,16 +52,16 @@ class Algorithm:
         #amax = np.argmax(y, axis=1)
         return y.max(axis=1)
 
-    def first_step(self, budget=None):
-        self.step(i=0, budget=budget)
+    def first_step(self):
+        self.step(i=0)
 
-    def run(self, n=10, budget=None):
+    def run(self, n=10):
         self.create_history()
         logger.info('Iteration 0')
-        self.first_step(budget)
+        self.first_step()
         for i in range(1, n):
             logger.info('Iteration %d', i)
-            self.step(i, budget)
+            self.step(i)
 
     def save(self, path):
         """Save algorithm state to file"""
@@ -56,24 +73,85 @@ class Algorithm:
     def update_history(self):
         pass
 
+    # XXX add --timeit
+    _LOGGING_OPT = cli.LoggingOption('trl.algorithms')
+    cli_params = [
+        click.Argument(('q',), type=cli.Regressor()),
+        click.Option(('-i', '--iterations'), default=100),
+        click.Option(('-d', '--dataset')),
+        click.Option(('-o', '--output')),
+        click.Option(('-s', '--stage'), metavar='N', type=int),
+        _LOGGING_OPT
+    ] + _LOGGING_OPT.options
+    cli_kwargs = {}
+
+    @classmethod
+    def make_cli(cls):
+        return click.Command(cls.cli_name, callback=cls.cli_callback,
+                             params=cls.cli_params, **cls.cli_kwargs)
+
+    @classmethod
+    def cli_callback(cls, q, iterations, dataset, output, stage, **config):
+        ctx = click.get_current_context()
+        experiment = ctx.obj
+
+        if dataset is not None:
+            dataset = utils.load_dataset(dataset)
+        else:
+            try:
+                i = experiment.interaction
+            except AttributeError:
+                raise click.UsageError('Missing dataset.')
+            else:
+                if not i.collect:
+                    raise click.UsageError('Missing dataset.')
+                dataset = i.dataset
+
+        experiment.seed(stage)
+        config['dataset'] = dataset
+        config['actions'] = experiment.actions
+        config['gamma'] = experiment.gamma
+        config['q'] = q()
+
+        experiment.seed()
+        algo = cls(**config)
+        algo.run(iterations)
+
+        if output:
+            regressor.save_regressor(algo.q, output, 'q')
+            algo.save(output)
+
+        experiment.policy = evaluation.QPolicy(algo.q, experiment.actions)
+        #return experiment_class(**ctx.obj).run()
+
+
 class FQI(Algorithm):
 
-    def first_step(self, budget=None):
+    def first_step(self):
         # XXX I think first step like this is ok only if self.q is 0
         self.q.fit(self.SA, self.dataset.reward)
 
-    def step(self, i=0, budget=None):
+    def step(self, i=0):
         y = self.dataset.reward + self.gamma * self.max_q()
         self.q.fit(self.SA, y)
         #log(i, y, self.params)
 
 
 class PBO(Algorithm):
+    cli_params = Algorithm.cli_params + [
+        click.Argument(('bo',), type=cli.CALLABLE),
+        click.Option(('-k', 'K'), default=1),
+        click.Option(('--norm', 'norm_value'), type=float, default=2),
+        click.Option(('--update-index',), default=1),
+        click.Option(('--update-steps',), type=int),
+        click.Option(('--inc/--no-inc', 'incremental'), is_flag=True,
+                     default=False)
+    ]
 
-    def __init__(self, experiment, bo, K=1, norm_value=2,
+    def __init__(self, q, dataset, actions, gamma, bo, K=1, norm_value=2,
                  update_index=1, update_steps=None, incremental=False):
-        super().__init__(experiment)
-        self.bo = bo
+        super().__init__(q, dataset, actions, gamma)
+        self.bo = bo(self.q) if callable(bo) else bo
         self.K = K
         self.norm_value = norm_value
         self.incremental = incremental
@@ -101,18 +179,23 @@ class PBO(Algorithm):
 
 
 class NESPBO(PBO):
+    cli_params = PBO.cli_params + [
+        click.Option(('-B', '--budget'), metavar='N', type=int),
+        click.Option(('-b', '--batch', 'batch_size'), default=10),
+        click.Option(('-r', '--learning-rate'), default=0.1),
+    ]
 
-    def __init__(self, experiment, bo, K=1, norm_value=2,
+    def __init__(self, q, dataset, actions, gamma, bo, K=1, norm_value=2,
                  update_index=1, update_steps=None, incremental=False,
-                 batch_size=10, learning_rate=0.1, **nes_args):
-        super().__init__(experiment, bo, K=K, norm_value=norm_value,
-                         update_index=update_index, update_steps=update_steps,
-                         incremental=incremental)
+                 budget=None, batch_size=10, learning_rate=0.1, **nes_args):
+        super().__init__(q, dataset, actions, gamma, bo, K, norm_value,
+                         update_index, update_steps, incremental)
         nes_args.setdefault('importanceMixing', False)
         self.best_params = self.bo.params
         self.optimizer = ExactNES(self.loss, self.best_params, minimize=True,
                                   batchSize=batch_size,
                                   learningRate=learning_rate, **nes_args)
+        self.budget = budget
 
     def loss(self, omega):
         loss = super().loss(omega)
@@ -121,9 +204,9 @@ class NESPBO(PBO):
             self.best_params = omega
         return loss
 
-    def step(self, i=0, budget=None):
+    def step(self, i=0):
         self.best_loss = np.inf
-        _, g_loss = self.optimizer.learn(budget)
+        _, g_loss = self.optimizer.learn(self.budget)
         self.bo.params = self.best_params
         logger.info('Global best: %f | Local best: %f', g_loss, self.best_loss)
 

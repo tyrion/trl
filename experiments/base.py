@@ -122,6 +122,11 @@ def handler(signum, frame):
     raise SystemExit
 
 
+def bo(q):
+    dim = len(q.params)
+    return build_nn(input_dim=dim, output_dim=dim)
+
+
 class CLIExperiment(Experiment):
     q_load_path = 'curve_fit'
 
