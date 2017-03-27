@@ -258,8 +258,8 @@ class Experiment:
             utils.save_dataset(self.trace, path, 'trace')
             utils.save_dataset(self.summary, path, 'summary')
 
-    _CONFIG_KEYS = ['env_name', 'horizon', 'gamma', 'training_episodes',
-        'training_iterations', 'evaluation_episodes', 'budget',
+    _CONFIG_KEYS = ['env_name', 'horizon', 'gamma',
+        'training_iterations', 'budget',
         'use_action_regressor', 'np_seed', 'env_seed',
         'timeit', 'render', 'dataset_load_path', 'dataset_save_path',
         'q_load_path', 'q_save_path', 'save_path']
