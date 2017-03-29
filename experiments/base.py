@@ -27,25 +27,25 @@ from trl.experiment import Experiment
 LOGGING = {
     'version': 1,
     'formatters': {
-	'default': {
-	    'format': '%(asctime)s %(levelname)5s:%(name)s: %(message)s',
-	},
+        'default': {
+            'format': '%(asctime)s %(levelname)5s:%(name)s: %(message)s',
+        },
     },
     'handlers': {
-	'console': {
-	    'class': 'logging.StreamHandler',
-	    'level': 'INFO',
-	    'formatter': 'default',
-	},
+        'console': {
+            'class': 'logging.StreamHandler',
+            'level': 'INFO',
+            'formatter': 'default',
+        },
     },
     'loggers': {
-	'trl': {
-	    'level': 'DEBUG',
-	},
+        'trl': {
+            'level': 'DEBUG',
+        },
     },
     'root': {
-	'level': 'DEBUG',
-	'handlers': ['console'],
+        'level': 'DEBUG',
+        'handlers': ['console'],
     },
 }
 
