@@ -19,7 +19,7 @@ from theano import tensor as T
 from scipy.optimize import curve_fit
 from sklearn.ensemble import ExtraTreesRegressor
 
-from trl import algorithms, regressor
+from trl import algorithms, regressor, utils
 from trl.algorithms import ifqi
 from trl.experiment import Experiment
 
@@ -200,3 +200,11 @@ class CLIExperiment(Experiment):
         x = unw.x_threshold
         t = 0.95 * unw.theta_threshold_radians
         return np.random.uniform([-x, -3.5, -t, -3], [x, 3.5, t, 3], (n, 4))
+
+    def get_evaluation_episodes(self):
+        if self.env_name != 'CarOnHill-v0':
+            return super().get_evaluation_episodes()
+
+        n = self.config.get('evaluation_episodes', 25)
+        n = n ** 0.5
+        return utils.make_grid(np.linspace(-1, 1, n), np.linspace(-3, 3, n))
