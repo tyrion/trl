@@ -33,8 +33,8 @@ dtype_gradpbo = np.dtype([
     ('performance', f), ('time', f), ('p_conf', f), ('t_conf', f)])
 
 
-def average_experiment_runs(experiment_path):
-    runs = glob.glob(os.path.join(experiment_path, 'experiment-*.h5'))
+def average_experiment_runs(experiment_path, pat='experiment-*.h5'):
+    runs = glob.glob(os.path.join(experiment_path, pat))
     n = len(runs)
     data = np.zeros((n,2))
     for i, path in enumerate(runs):
