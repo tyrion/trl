@@ -135,7 +135,6 @@ class Split(Layer):
         i = j = 0
         for v in self.original:
             shape = v._keras_shape[1:]
-            print(shape)
             j += np.prod(shape)
             v = x[:, i:j]
             yield v if len(shape) < 2 else K.reshape(v, (-1,) + shape)
