@@ -160,7 +160,7 @@ class NESPBO(PBO):
     def __init__(self, q, dataset, actions, gamma, horizon, bo, K=1, norm_value=2,
                  update_index=1, update_steps=None, incremental=False,
                  budget=None, batch_size=10, learning_rate=0.1, **nes_args):
-        super().__init__(q, dataset, actions, gamma, bo, K, norm_value,
+        super().__init__(q, dataset, actions, gamma, horizon, bo, K, norm_value,
                          update_index, update_steps, incremental)
         nes_args.setdefault('importanceMixing', False)
         self.best_params = self.bo.params

@@ -14,10 +14,6 @@ from trl.algorithms import ifqi
 from trl.experiment import Experiment
 
 
-class FakeRequest():
-    param = None
-
-
 class CurveFitQRegressor(regressor.TheanoRegressor):
     def fit(self, x, y):
         self.params, pcov = curve_fit(self.Q, x, y, p0=self.params - 0.0001)
@@ -49,64 +45,27 @@ def build_nn(input_dim=2, output_dim=2, activation='sigmoid'):
 def build_q(input_dim, output_dim=1):
     return CurveFitQRegressor(np.array([0, 0], dtype=theano.config.floatX))
 
+
 def build_bo(q):
     ndim = len(q.params)
     return build_nn(ndim, ndim)
-
-class BaseExperiment(Experiment):
-    env_name = 'LQG1D-v0'
-    training_episodes = 5
-    training_iterations = 2
-    evaluation_episodes = 2
-    budget = 1
-
-    def get_q(self):
-        return CurveFitQRegressor(np.array([0, 0], dtype=theano.config.floatX))
-
-    def get_algorithm_config(self):
-        # bo needs to be created here due to seed settings.
-        ndim = len(self.q.params)
-        self.algorithm_config['bo'] = build_nn(ndim, ndim)
-        return self.algorithm_config
-
-
-@pytest.fixture
-def experiment(request):
-    opts, algo_c, summary = request.param
-    print(algo_c, file=sys.stderr)
-    Ex = type('Ex', (BaseExperiment,), opts)
-
-    def get_experiment(algo):
-        e = Ex(algorithm_class=algo, algorithm_config=algo_c.copy(),
-               initial_states=None, horizon=50)
-        return e, summary
-
-    return get_experiment
 
 
 @pytest.fixture
 def exp(request):
     seed, algo_c, summary = request.param
-
-    def get_experiment(algo, **kwargs):
-        config = algo_c.copy()
-        config.update(kwargs, bo=build_bo)
-        spec = gym.spec('LQG1D-v0')
-        e = Experiment(spec, horizon=50, seed=seed)
-        e.log_config()
-        e.collect(episodes=5)
-        e.train(q=build_q, iterations=2, stage=(3,1), algorithm_class=algo, algorithm_config=config)
-        e.evaluate(policy=lambda e: e.policy, episodes=2)
-
-        assert np.allclose(summary, e.summary)
-
-    return get_experiment
+    return 1
 
 
-def run(experiment, algorithm):
-    e, summary = experiment(algorithm)
-    r = e.run()
-    assert np.allclose(summary, r[1]), "{} {}".format(summary, r[1])
+def run(algo, seed, **config):
+    config['bo'] = build_bo
+    spec = gym.spec('LQG1D-v0')
+    e = Experiment(spec, horizon=50, seed=seed)
+    e.log_config()
+    e.collect(episodes=5)
+    e.train(q=build_q, iterations=2, stage=(3,1), algorithm_class=algo, algorithm_config=config)
+    e.evaluate(policy=lambda e: e.policy, episodes=2)
+    return e
 
 
 nes_params = (
@@ -128,16 +87,18 @@ nes_params = (
         [50., -1.55656433, -75.25311279]],
 )
 
-def convert_seeds(np_seed, env_seed):
-    return np_seed * 2**64 + env_seed
 
-@pytest.mark.parametrize('exp', nes_params, True)
-def test_nespbo(exp):
-    exp(algorithms.NESPBO, budget=1)
+@pytest.mark.parametrize('seed,algo_c,summary', nes_params)
+def test_nespbo(seed, algo_c, summary):
+    e = run(algorithms.NESPBO, seed, budget=1, **algo_c)
+    assert np.allclose(summary, e.summary)
 
-@pytest.mark.parametrize('exp', nes_params, True)
-def test_nespbo_ifqi(exp):
-    exp(ifqi.PBO)
+
+
+@pytest.mark.parametrize('seed,algo_c,summary', nes_params)
+def test_nespbo_ifqi(seed, algo_c, summary):
+    e = run(ifqi.PBO, seed, **algo_c)
+    assert np.allclose(summary, e.summary)
 
 
 grad_params = (
@@ -164,32 +125,26 @@ grad_params = (
 )
 
 
-@pytest.mark.parametrize('exp', grad_params, True)
-def test_gradpbo(exp):
-    exp(algorithms.GradPBO)
-
-@pytest.mark.parametrize('exp', grad_params, True)
-def test_gradpbo_ifqi(exp):
-    exp(ifqi.GradPBO)
+@pytest.mark.parametrize('seed,algo_c,summary', grad_params)
+def test_gradpbo(seed, algo_c, summary):
+    e = run(algorithms.GradPBO, seed, **algo_c)
+    assert np.allclose(summary, e.summary)
 
 
-@pytest.mark.parametrize("opts, algo_c, summary", grad_params)
-def test_gradpbo_history_comparison(opts, algo_c, summary):
-    request = FakeRequest()
-    request.param = (opts, algo_c, summary)
-    print(request.param)
+@pytest.mark.parametrize('seed,algo_c,summary', grad_params)
+def test_gradpbo(seed, algo_c, summary):
+    e = run(ifqi.GradPBO, seed, **algo_c)
+    assert np.allclose(summary, e.summary)
 
-    cexp = experiment(request)
-    e, summary = cexp(ifqi.GradPBO)
-    r1 = e.run()
-    ifqig = e.algorithm
 
-    cexp = experiment(request)
-    e, summary = cexp(algorithms.GradPBO)
-    r2 = e.run()
-    trlg = e.algorithm
+@pytest.mark.parametrize('seed,algo_c,summary', grad_params)
+def test_history(seed, algo_c, summary):
+    e1 = run(ifqi.GradPBO, seed, **algo_c)
+    e2 = run(algorithms.GradPBO, seed, **algo_c)
+    ifqig = e1.algorithm
+    trlg = e2.algorithm
 
-    assert np.allclose(r1[1], r2[1]), "{}, {}".format(r1[1], r2[1])
+    assert np.allclose(e1.summary, e2.summary)
 
     t1 = np.array(ifqig.history['theta']).squeeze()
     t2 = np.array(trlg.history['theta']).squeeze()
@@ -198,14 +153,3 @@ def test_gradpbo_history_comparison(opts, algo_c, summary):
     for v1, v2 in zip(ifqig.history['rho'], trlg.history['rho']):
         for sv1, sv2 in zip(v1, v2):
             assert np.allclose(sv1, sv2), "{}, {}".format(sv1, sv2)
-
-
-if __name__ == '__main__':
-    st = FakeRequest()
-    st.param = grad_params[3]
-    print(st.param)
-    test_gradpbo_history_comparison(*st.param)
-    # cexp = experiment(st)
-    # test_gradpbo(cexp)
-    # cexp = experiment(st)
-    # test_gradpbo_ifqi(cexp)

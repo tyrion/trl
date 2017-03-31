@@ -221,6 +221,7 @@ def _get(keys, dicts):
 
 
 class Experiment:
+    algorithm = None
     interaction = None
     policy = None
     summary = None
@@ -321,7 +322,7 @@ class Experiment:
         kwargs['collect'] = True
         return self.interact(**kwargs)
 
-    def evaluate(self, metrics=None, **kwargs):
+    def evaluate(self, *, metrics=None, **kwargs):
         kwargs['collect'] = False
         if metrics is None:
             metrics = evaluation.average, evaluation.discounted(self.gamma)
@@ -354,6 +355,7 @@ class Experiment:
             regressor.save_regressor(algo.q, output, 'q')
             algo.save(output)
 
+        self.algorithm = algo
         self.policy = evaluation.QPolicy(algo.q, self.actions)
 
     def run(self):
