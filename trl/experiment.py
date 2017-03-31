@@ -33,7 +33,7 @@ def get_seed(seed, stage, max_bytes=8):
 
 
 
-class Experiment:
+class Experiment_:
     gamma = 0.9
     horizon = 100
 
@@ -218,19 +218,25 @@ def _get(keys, dicts):
     return last_dict[last_key]
 
 
+
+
 class Experiment:
     interaction = None
     policy = None
+    summary = None
 
-    def __init__(self, env_spec, gamma, horizon=None, **config):
+    gamma = 0.9
+    horizon = 100
+
+    def __init__(self, env_spec, **config):
         self.env_spec = env_spec
         self.env = gym.make(env_spec.id)
         self.config = config
         self.actions = self.get_actions()
         self.state_dim = utils.get_space_dim(self.env.observation_space)
         self.action_dim = utils.get_space_dim(self.env.action_space)
-        self.horizon = horizon
-        self.gamma = gamma
+        self.gamma = self.get_gamma()
+        self.horizon = self.get_horizon()
 
         self.init_seed()
 
@@ -289,7 +295,8 @@ class Experiment:
 
 
 
-    def interact(self, policy, episodes, output, collect, metrics, render=False, stage=None):
+    def interact(self, *, policy=lambda e: None, episodes=100, output=None,
+                 collect=None, metrics=(), render=False, stage=None):
         policy = policy(self)
         i = evaluation.Interaction(self.env, episodes, self.horizon, policy, collect, metrics, render)
         self.seed(stage)
@@ -300,6 +307,7 @@ class Experiment:
         if metrics:
             t = i.trace
             s = np.concatenate((t.time.mean(keepdims=True), t.metrics.mean(0)))
+            self.summary = s
             logger.info('Summary avg (time, *metrics): %s', s)
 
         if output:
@@ -309,31 +317,37 @@ class Experiment:
 
         return i
 
-    def collect(self, *args, **kwargs):
+    def collect(self, **kwargs):
         kwargs['collect'] = True
-        return self.interact(*args, **kwargs)
+        return self.interact(**kwargs)
 
-    def evaluate(self, *args, **kwargs):
+    def evaluate(self, metrics=None, **kwargs):
         kwargs['collect'] = False
-        return self.interact(*args, **kwargs)
+        if metrics is None:
+            metrics = evaluation.average, evaluation.discounted(self.gamma)
+        return self.interact(metrics=metrics, **kwargs)
 
-    @action
-    def train(self, q, iterations, algorithm_class, dataset=None, output=None, stage=None, **config):
-        print(dataset)
+    def train(self, *, q, algorithm_class, dataset=None, iterations=100,
+              output=None, stage=None, algorithm_config=None):
+        stage_a, stage_b = stage or (stage, stage)
+        if algorithm_config is None:
+            algorithm_config = {}
+
         if dataset is None:
             if self.interaction is not None and self.interaction.collect:
                 dataset = self.interaction.dataset
             else:
                 raise click.UsageError('Missing dataset.')
 
-        self.seed(stage)
-        config['dataset'] = dataset
-        config['actions'] = self.actions
-        config['gamma'] = self.gamma
-        config['q'] = q()
+        self.seed(stage_a)
+        algorithm_config['dataset'] = dataset
+        algorithm_config['actions'] = self.actions
+        algorithm_config['gamma'] = self.gamma
+        algorithm_config['horizon'] = self.horizon
+        algorithm_config['q'] = q(self.state_dim + self.action_dim, 1)
 
-        self.seed()
-        algo = algorithm_class(**config)
+        self.seed(stage_b)
+        algo = algorithm_class(**algorithm_config)
         algo.run(iterations)
 
         if output:
@@ -350,7 +364,6 @@ class Experiment:
 
     # _get_default('collect_ep', 'interact_ep')
     def _get_default(self, keys, params={}):
-
         pass
 
     def _apply_defaults(self, ba, default_keys):

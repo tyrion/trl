@@ -33,10 +33,11 @@ class AlgorithmMeta(abc.ABCMeta):
 
 class Algorithm(metaclass=AlgorithmMeta):
 
-    def __init__(self, q, dataset, actions, gamma):
+    def __init__(self, q, dataset, actions, gamma, horizon):
         self.dataset = dataset
         self.actions = actions
         self.gamma = gamma
+        self.horizon = horizon
         self.q = q
         self.S1A = utils.make_grid(self.dataset.next_state, self.actions)
         self.SA = utils.rec_to_array(self.dataset[['state', 'action']])
@@ -119,9 +120,9 @@ class PBO(Algorithm):
                      default=False)
     ]
 
-    def __init__(self, q, dataset, actions, gamma, bo, K=1, norm_value=2,
+    def __init__(self, q, dataset, actions, gamma, horizon, bo, K=1, norm_value=2,
                  update_index=1, update_steps=None, incremental=False):
-        super().__init__(q, dataset, actions, gamma)
+        super().__init__(q, dataset, actions, gamma, horizon)
         self.bo = bo(self.q) if callable(bo) else bo
         self.K = K
         self.norm_value = norm_value
@@ -156,7 +157,7 @@ class NESPBO(PBO):
         click.Option(('-r', '--learning-rate'), default=0.1),
     ]
 
-    def __init__(self, q, dataset, actions, gamma, bo, K=1, norm_value=2,
+    def __init__(self, q, dataset, actions, gamma, horizon, bo, K=1, norm_value=2,
                  update_index=1, update_steps=None, incremental=False,
                  budget=None, batch_size=10, learning_rate=0.1, **nes_args):
         super().__init__(q, dataset, actions, gamma, bo, K, norm_value,

@@ -51,9 +51,9 @@ class GradientAlgorithm(Algorithm):
         click.Option(('--update-index',), default=1),
         click.Option(('-b', '--batch', 'batch_size'), default=10),
     ]
-    def __init__(self, q, dataset, actions, gamma, optimizer='adam',
+    def __init__(self, q, dataset, actions, gamma, horizon, optimizer='adam',
                  batch_size=10, norm_value=2, update_index=1):
-        super().__init__(q, dataset, actions, gamma)
+        super().__init__(q, dataset, actions, gamma, horizon)
         assert len(self.q.inputs) == 1
         assert len(self.q.outputs) == 1
         self.optimizer = optimizers.get(optimizer)
@@ -126,12 +126,12 @@ class GradPBO(GradientAlgorithm):
                      default=False),
     ]
 
-    def __init__(self, q, dataset, actions, gamma, bo, K=1, optimizer='adam',
+    def __init__(self, q, dataset, actions, gamma, horizon, bo, K=1, optimizer='adam',
                  batch_size=10, norm_value=2, update_index=1,
                  update_steps=None, update_loss=None, incremental=False,
                  independent=False):
-        super().__init__(q, dataset, actions, gamma, optimizer, batch_size,
-                         norm_value, update_index)
+        super().__init__(q, dataset, actions, gamma, horizon,
+                         optimizer, batch_size, norm_value, update_index)
 
         self.bo = bo = bo(self.q) if callable(bo) else bo
         assert len(bo.inputs) == len(bo.outputs) == len(self.q.trainable_weights)
