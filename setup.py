@@ -49,6 +49,7 @@ setup(
         'pybrain>=0.3.3',
         'matplotlib>=2.0.0',
         'h5py>=2.6.0',
+        'click>=6.7',
         'ifqi',
     ],
     extras_require={
