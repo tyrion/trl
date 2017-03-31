@@ -78,7 +78,7 @@ class Algorithm(metaclass=AlgorithmMeta):
     cli_params = [
         click.Argument(('q',), type=cli.Regressor()),
         click.Option(('-i', '--iterations'), default=100),
-        click.Option(('-d', '--dataset')),
+        click.Option(('-d', '--dataset'), type=cli.DATASET),
         click.Option(('-o', '--output')),
         click.Option(('-s', '--stage'), metavar='N', type=int),
         _LOGGING_OPT
@@ -87,42 +87,13 @@ class Algorithm(metaclass=AlgorithmMeta):
 
     @classmethod
     def make_cli(cls):
-        return click.Command(cls.cli_name, callback=cls.cli_callback,
+        cb = cli.processor(cls.cli_callback)
+        return click.Command(cls.cli_name, callback=cb,
                              params=cls.cli_params, **cls.cli_kwargs)
 
     @classmethod
-    def cli_callback(cls, q, iterations, dataset, output, stage, **config):
-        ctx = click.get_current_context()
-        experiment = ctx.obj
-
-        if dataset is not None:
-            dataset = utils.load_dataset(dataset)
-        else:
-            try:
-                i = experiment.interaction
-            except AttributeError:
-                raise click.UsageError('Missing dataset.')
-            else:
-                if not i.collect:
-                    raise click.UsageError('Missing dataset.')
-                dataset = i.dataset
-
-        experiment.seed(stage)
-        config['dataset'] = dataset
-        config['actions'] = experiment.actions
-        config['gamma'] = experiment.gamma
-        config['q'] = q()
-
-        experiment.seed()
-        algo = cls(**config)
-        algo.run(iterations)
-
-        if output:
-            regressor.save_regressor(algo.q, output, 'q')
-            algo.save(output)
-
-        experiment.policy = evaluation.QPolicy(algo.q, experiment.actions)
-        #return experiment_class(**ctx.obj).run()
+    def cli_callback(cls, exp, **config):
+        return exp.train(algorithm_class=cls, **config)
 
 
 class FQI(Algorithm):

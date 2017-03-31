@@ -103,7 +103,7 @@ class Dataset(Loadable):
     def convert(self, value, param, ctx):
         if ':' in value:
             return self.load_obj(value)
-        
+
         try:
             return utils.load_dataset(value, self.dataset_name)
         except OSError:
@@ -113,11 +113,11 @@ class Dataset(Loadable):
 class Regressor(Callable):
     def __init__(self, regressor_name='regressor'):
         self.regressor_name = regressor_name
-    
+
     def convert(self, value, param, ctx):
         if ':' in value:
             return self.load_obj(value)
-        
+
         try:
             regr = regressor.load_regressor(value, self.regressor_name)
         except OSError:
@@ -127,7 +127,7 @@ class Regressor(Callable):
 
 
 class Metric(Callable):
-    
+
     def __init__(self, shortcuts=None):
         self.shortcuts = shortcuts or {}
 
@@ -162,6 +162,7 @@ class LoadablePath(Loadable, click.Path):
 
 LOADABLE = Loadable()
 CALLABLE = Callable()
+DATASET = Dataset()
 ENV = EnvParamType()
 
 _discounted = lambda e: evaluation.discounted(e.gamma)
@@ -217,7 +218,7 @@ class LoggingOption(click.Option):
             lvl = min(4, max(0, self._default - log_v + log_q))
         except ValueError:
             raise click.UsageError('Invalid log-level %s' % opts['log_level'])
-        
+
         lvl = LOGGING_LEVELS[lvl]
         logger = logging.getLogger(self.logger)
         logger.setLevel(lvl)
@@ -229,8 +230,18 @@ class LoggingOption(click.Option):
         cmd.params.append(self)
 
 
+def processor(f):
+
+    def wrapper(*args, **kwargs):
+        return lambda exp: f(exp, *args, **kwargs)
+
+    return wrapper
+
+
+
+
 @click.group(chain=True)
-@click.argument('env', type=ENV)
+@click.argument('env_spec', metavar='ENV', type=ENV)
 @click.option('-h', '--horizon', metavar='N', type=int, default=100,
               help='Max number of steps per episode.')
 @click.option('-g', '--gamma', metavar='N', type=float, default=0.99)
@@ -241,69 +252,50 @@ class LoggingOption(click.Option):
 @click.option('--log-config', metavar='PATH', is_eager=True,
               expose_value=False, callback=configure_logging)
 @click.pass_context
-def cli(ctx, env, **config):
-    config = {k: v for k, v in config.items() if v is not None}
-    ctx.obj = e = Experiment(env, **config)
-    e.log_config()
+def cli(ctx, **config):
+    ctx = click.get_current_context()
+    pass
 
 LoggingOption().register(cli)
 
 
-def episodes(value):
-    try:
-        return int(value)
-    except ValueError:
-        if ':' in value:
-            load_obj
-        else:
-            utils.load_dataset()
+@cli.resultcallback()
+def process_result(processors, **config):
+    ctx = click.get_current_context()
+    config = {k: v for k, v in config.items() if v is not None}
+    ctx.obj = e = Experiment(**config)
+    e.log_config()
+
+    for processor in processors:
+        processor(e)
+
 
 @click.command('interact')
 @click.option('-p', '--policy', callback=policy, metavar='PATH')
-@click.option('-e', '--episodes', type=episodes, default=10)
+@click.option('-e', '--episodes', default=10)
 @click.option('-o', '--output') # filepath
 @click.option('-c', '--collect/--no-collect', is_flag=True, default=False)
 @click.option('-m', '--metric', 'metrics', type=METRIC, multiple=True)
 @click.option('-r', '--render/--no-render', is_flag=True, default=False)
 @click.option('-s', '--stage', metavar='N', type=int)
-@click.pass_context
-def interact(ctx, policy, episodes, output, collect, metrics, render, stage):
-    ctx = click.get_current_context()
-    experiment = ctx.obj
-    env = experiment.env
-    horizon = experiment.horizon
-
-    policy = policy(experiment)
-    i = Interaction(env, episodes, horizon, policy, collect, metrics, render)
-    experiment.seed(stage)
-    i.run()
-
-    experiment.interaction = i
-
-    if metrics:
-        t = i.trace
-        s = np.concatenate((t.time.mean(keepdims=True), t.metrics.mean(0)))
-        logger.info('Summary avg (time, *metrics): %s', s)
-
-    if output:
-        if collect:
-            utils.save_dataset(i.dataset, output)
-        utils.save_dataset(i.trace, output, 'trace')
+@processor
+def interact(exp, **conf):
+    return exp.interact(**conf)
 
 LoggingOption('trl.evaluation').register(interact)
 
 
 @click.command('collect')
-def collect(**config):
-     ctx = click.get_current_context()
-     return ctx.forward(interact, collect=True)
+@processor
+def collect(exp, **config):
+    return exp.collect(**config)
 collect.params = [p for p in interact.params if not p.name == 'collect']
 
 
 @click.command('evaluate')
-def evaluate(**config):
-    ctx = click.get_current_context()
-    return ctx.forward(interact, collect=False)
+@processor
+def evaluate(exp, **config):
+    return exp.evaluate(**config)
 
 evaluate.params = collect.params[:]
 evaluate.params[3] = click.Option(

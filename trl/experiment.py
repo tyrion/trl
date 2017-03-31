@@ -53,7 +53,7 @@ class Experiment:
 
     def __init__(self, **config):
         self.config = config
-        
+
         for key, value in config.items():
             if key not in self.IGNORE_CONFIG and hasattr(self.__class__, key):
                 setattr(self, key, value)
@@ -189,6 +189,35 @@ class Experiment:
         logging.disable(logging.INFO)
 
 
+
+def action(method):
+    sig = inspect.signature(method)
+    name = '{}_{{}}'.format(method.__name__)
+
+    def wrapper(self, *args, **kwargs):
+        return self._action(method, sig, *args, **kwargs)
+
+    return wrapper
+
+
+
+import inspect
+import collections
+
+
+
+
+def _get(keys, dicts):
+    *keys, last_key = keys
+    *dicts, last_dict = dicts
+    for key, dict in zip(keys, dicts):
+        try:
+            return dict[key]
+        except KeyError:
+            pass
+    return last_dict[last_key]
+
+
 class Experiment:
     interaction = None
     policy = None
@@ -257,3 +286,94 @@ class Experiment:
         logger.info('Discretized actions (%d): %s', len(self.actions),
             np.array2string(self.actions, max_line_width=np.inf))
         logger.info('Gamma: %f', self.gamma)
+
+
+
+    def interact(self, policy, episodes, output, collect, metrics, render=False, stage=None):
+        policy = policy(self)
+        i = evaluation.Interaction(self.env, episodes, self.horizon, policy, collect, metrics, render)
+        self.seed(stage)
+        i.run()
+
+        self.interaction = i
+
+        if metrics:
+            t = i.trace
+            s = np.concatenate((t.time.mean(keepdims=True), t.metrics.mean(0)))
+            logger.info('Summary avg (time, *metrics): %s', s)
+
+        if output:
+            if collect:
+                utils.save_dataset(i.dataset, output)
+            utils.save_dataset(i.trace, output, 'trace')
+
+        return i
+
+    def collect(self, *args, **kwargs):
+        kwargs['collect'] = True
+        return self.interact(*args, **kwargs)
+
+    def evaluate(self, *args, **kwargs):
+        kwargs['collect'] = False
+        return self.interact(*args, **kwargs)
+
+    @action
+    def train(self, q, iterations, algorithm_class, dataset=None, output=None, stage=None, **config):
+        print(dataset)
+        if dataset is None:
+            if self.interaction is not None and self.interaction.collect:
+                dataset = self.interaction.dataset
+            else:
+                raise click.UsageError('Missing dataset.')
+
+        self.seed(stage)
+        config['dataset'] = dataset
+        config['actions'] = self.actions
+        config['gamma'] = self.gamma
+        config['q'] = q()
+
+        self.seed()
+        algo = algorithm_class(**config)
+        algo.run(iterations)
+
+        if output:
+            regressor.save_regressor(algo.q, output, 'q')
+            algo.save(output)
+
+        self.policy = evaluation.QPolicy(algo.q, self.actions)
+
+    def run(self):
+        self.collect()
+        self.train()
+        self.evaluate()
+
+
+    # _get_default('collect_ep', 'interact_ep')
+    def _get_default(self, keys, params={}):
+
+        pass
+
+    def _apply_defaults(self, ba, default_keys):
+        arguments = ba.arguments
+        new_arguments = []
+        config = (arguments, self.config, vars(self.__class__))
+
+        for name, param in ba._signature.parameters.items():
+            try:
+                key = default_key.format(name)
+                value = _get([name, key, key], config)
+            except KeyError:
+                if param.kind is inspect._VAR_POSITIONAL:
+                    value = ()
+                elif param.kind is inspect._VAR_KEYWORD:
+                    value = {}
+                else:
+                    continue
+            new_arguments.append((name, value))
+        ba.arguments = collections.OrderedDict(new_arguments)
+        return ba
+
+    def _action(self, method, sig, args, kwargs, name=None):
+        ba = sig.bind_partial(self, *args, **kwargs)
+        ba = self._apply_defaults(ba, name)
+        return method(*ba.args, **ba.kwargs)
