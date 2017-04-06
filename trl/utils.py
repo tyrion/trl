@@ -31,8 +31,9 @@ def make_grid(x: np.ndarray, y: np.ndarray) -> np.ndarray:
 
 
 def rec_to_array(recarray: np.rec.array) -> np.ndarray:
+    dtype = recarray.dtype[0]
     nrows = len(recarray)
-    d = recarray.view(None, np.ndarray)
+    d = recarray.view(dtype, np.ndarray)
     return d.reshape((nrows, len(d) // nrows))
 
 
