@@ -12,10 +12,6 @@ from trl.experiment import Experiment
 floatX = theano.config.floatX
 
 
-class FakeRequest():
-    param = None
-
-
 def bellmanop(rho, theta):
     return theta.dot(rho)
 
@@ -56,6 +52,10 @@ dataset_rec = np.rec.array(dataset_arr.ravel(), copy=False, dtype=[
 
 rho0 = np.array([[1., 2.], [0., 3.]], dtype=floatX)
 theta0 = np.array([[2., 0.2]], dtype=floatX)
+
+def build_bo(q):
+    return LBPO(rho0)
+
 
 
 params = {
@@ -99,14 +99,51 @@ def experiment(request):
     return e
 
 
-def test_bellman_error(experiment):
-    e = experiment
-    pbo = e.algorithm
+@pytest.fixture(params=list(params.values()), ids=list(params.keys()))
+def exp(request):
+    incremental, K = request.param
+    config = {
+        'q': CurveFitQRegressor(theta0[0]),
+        'dataset': dataset_rec,
+        'actions':  np.array([1, 2, 3], dtype=floatX).reshape(-1, 1),
+        'gamma': 0.95,
+        'horizon': 100,
+        'bo': build_bo,
+        'K': K,
+        'norm_value': 2,
+        'update_index': 10,
+        'update_steps': None,
+        'incremental': incremental,
+    }
 
-    err0 = e.epbo.loss(rho0)
-    err1 = pbo.train_f(dataset_arr, theta0)
+    a = algorithms.PBO(**config)
+    b = algorithms.GradPBO(**config)
+    return a, b
+
+
+def test_be(exp):
+    epbo, grad = exp
+
+    err0 = epbo.loss(rho0)
+    err1 = grad.train_f(dataset_arr, theta0)
 
     assert np.allclose(err0, err1)
+
+
+def test_be_grad(exp):
+    epbo, gpbo = exp
+
+    t_grad = T.grad(gpbo.t_output, gpbo.bo.trainable_weights)
+    grad = theano.function(gpbo.t_input, t_grad, name='grad')
+    r0 = grad(dataset_arr, theta0)
+
+    f = lambda x: epbo.loss(x.reshape(rho0.shape))
+    dfun = nd.Gradient(f)
+    r1 = dfun(rho0.ravel()).reshape(rho0.shape)
+    print(r0)
+    print(r1)
+
+    assert np.allclose(r0, r1)
 
 
 def test_bellman_grad(experiment):

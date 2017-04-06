@@ -132,7 +132,7 @@ def test_gradpbo(seed, algo_c, summary):
 
 
 @pytest.mark.parametrize('seed,algo_c,summary', grad_params)
-def test_gradpbo(seed, algo_c, summary):
+def test_gradpbo_ifqi(seed, algo_c, summary):
     e = run(ifqi.GradPBO, seed, **algo_c)
     assert np.allclose(summary, e.summary)
 
