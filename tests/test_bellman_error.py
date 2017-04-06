@@ -53,9 +53,9 @@ dataset_rec = np.rec.array(dataset_arr.ravel(), copy=False, dtype=[
 rho0 = np.array([[1., 2.], [0., 3.]], dtype=floatX)
 theta0 = np.array([[2., 0.2]], dtype=floatX)
 
+
 def build_bo(q):
     return LBPO(rho0)
-
 
 
 params = {
@@ -65,48 +65,15 @@ params = {
     '3inc': (True, 3),
 }
 
+
 @pytest.fixture(params=list(params.values()), ids=list(params.keys()))
 def experiment(request):
-    incremental, K = request.param
-
-    bo = LBPO(rho0)
-    e = Experiment(
-        env_name='LQG1D-v0',
-        training_episodes=10,
-        algorithm_class=algorithms.GradPBO,
-        algorithm_config={
-            'bo': bo,
-            'K': K,
-            'optimizer': 'adam',
-            'batch_size': 10,
-            'norm_value': 2,
-            'update_index': 10,
-            'update_steps': None,
-            'incremental': incremental,
-            'independent': False,
-        },
-        np_seed=None,
-        env_seed=None,
-    )
-    e.actions = np.array([1, 2, 3], dtype=floatX).reshape(-1, 1)
-
-    # e.dataset = e.get_dataset()
-    e.dataset = dataset_rec
-    e.q = CurveFitQRegressor(theta0[0])
-    e.seed(1)
-    e.algorithm = e.get_algorithm()
-    e.epbo = algorithms.PBO(e, bo, K, incremental=incremental)
-    return e
-
-
-@pytest.fixture(params=list(params.values()), ids=list(params.keys()))
-def exp(request):
     incremental, K = request.param
     config = {
         'q': CurveFitQRegressor(theta0[0]),
         'dataset': dataset_rec,
         'actions':  np.array([1, 2, 3], dtype=floatX).reshape(-1, 1),
-        'gamma': 0.95,
+        'gamma': 0.99,
         'horizon': 100,
         'bo': build_bo,
         'K': K,
@@ -116,13 +83,13 @@ def exp(request):
         'incremental': incremental,
     }
 
-    a = algorithms.PBO(**config)
-    b = algorithms.GradPBO(**config)
-    return a, b
+    epbo = algorithms.PBO(**config)
+    grad = algorithms.GradPBO(**config)
+    return epbo, grad
 
 
-def test_be(exp):
-    epbo, grad = exp
+def test_bellman_error(experiment):
+    epbo, grad = experiment
 
     err0 = epbo.loss(rho0)
     err1 = grad.train_f(dataset_arr, theta0)
@@ -130,8 +97,8 @@ def test_be(exp):
     assert np.allclose(err0, err1)
 
 
-def test_be_grad(exp):
-    epbo, gpbo = exp
+def test_bellman_grad(experiment):
+    epbo, gpbo = experiment
 
     t_grad = T.grad(gpbo.t_output, gpbo.bo.trainable_weights)
     grad = theano.function(gpbo.t_input, t_grad, name='grad')
@@ -140,29 +107,5 @@ def test_be_grad(exp):
     f = lambda x: epbo.loss(x.reshape(rho0.shape))
     dfun = nd.Gradient(f)
     r1 = dfun(rho0.ravel()).reshape(rho0.shape)
-    print(r0)
-    print(r1)
 
     assert np.allclose(r0, r1)
-
-
-def test_bellman_grad(experiment):
-    e = experiment
-    pbo = e.algorithm
-
-    t_grad = T.grad(pbo.t_output, pbo.bo.trainable_weights)
-    grad = theano.function(pbo.t_input, t_grad, name='grad')
-    r0 = grad(dataset_arr, theta0)
-
-    f = lambda x: e.epbo.loss(x.reshape(rho0.shape))
-    dfun = nd.Gradient(f)
-    r1 = dfun(rho0.ravel()).reshape(rho0.shape)
-
-    assert np.allclose(r0, r1)
-
-if __name__ == '__main__':
-    st = FakeRequest()
-    st.param = (False, 1)
-    print(st.param)
-    cexp = experiment(st)
-    test_bellman_error(cexp)
