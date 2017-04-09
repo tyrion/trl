@@ -52,11 +52,15 @@ def save_regressor(regressor, filepath, name='regressor', attrs=None):
 
 
 def _dumps(object):
-    return base64.b64encode(pickle.dumps(object))
+    return np.array(pickle.dumps(object))
 
 
 def _loads(object):
-    return pickle.loads(base64.b64decode(object))
+    try:
+        return pickle.loads(object)
+    except:
+        object = base64.b64decode(object)
+        return pickle.loads(object)
 
 
 # XXX dirty hack, monkey patching h5py
@@ -194,7 +198,8 @@ class TheanoRegressor(SymbolicRegressor):
 
 class KerasRegressor(SymbolicRegressor):
 
-    def __init__(self, model, input_dim=2, **fit_kwargs):
+    def __init__(self, model, input_dim=2, scaler_x=None, scaler_y=None,
+                 **fit_kwargs):
         self._model = model
         self.input_dim = input_dim
         self._params = None
@@ -202,8 +207,8 @@ class KerasRegressor(SymbolicRegressor):
         self.fit_kwargs = fit_kwargs
         fit_kwargs.setdefault('verbose', 0)
 
-        self.scaler_x = None
-        self.scaler_y = None
+        self.scaler_x = scaler_x
+        self.scaler_y = scaler_y
 
     @property
     def params(self):
@@ -280,6 +285,8 @@ class KerasRegressor(SymbolicRegressor):
     def get_config(self):
         config = copy.deepcopy(self.fit_kwargs)
         config['input_dim'] = self.input_dim
+        config['scaler_x'] = self.scaler_x
+        config['scaler_y'] = self.scaler_y
         return config
 
     def save(self, group):
