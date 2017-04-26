@@ -365,10 +365,12 @@ class ActionRegressor(Regressor):
             if np.any(i):
                 yield regressor, i
 
-    def fit(self, x, y):
+    def fit(self, x, y, sample_weight=None, **fit_kwargs):
         states, actions = np.hsplit(x, [-self.action_dim])
         for regressor, i in self._regressors(actions):
-            regressor.fit(states[i], y[i])
+            if sample_weight is not None:
+                fit_kwargs['sample_weight'] = sample_weight[i]
+            regressor.fit(states[i], y[i], **fit_kwargs)
 
     def predict(self, x):
         states, actions = np.hsplit(x, [-self.action_dim])
