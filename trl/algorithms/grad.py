@@ -182,6 +182,10 @@ class GradPBO(GradientAlgorithm):
         #theta0 = [theano.printing.Print('t0')(t) for t in theta0]
         update = self.bo.model(theta0)
         theta1 = zip_sum(theta0, update) if self.incremental else update
+
+        # XXX hack to make theano work
+        for theta in theta1:
+            theta.type.broadcastable = (False,) * len(theta.type.broadcastable)
         #theta1 = [theano.printing.Print('t1')(t) for t in theta1]
 
         maxq = self.t_max_q(
