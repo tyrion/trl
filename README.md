@@ -4,7 +4,8 @@
 
 ## Prerequisites
 
-This project requires Python 3 to run.
+* This project requires Python 3 to run.
+* Additionally ensure you have build_essential and python3-dev installed in order for Theano to run properly.
 
 ## Install
 
