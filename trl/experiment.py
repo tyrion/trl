@@ -1,4 +1,5 @@
 import concurrent.futures
+import contextlib
 import copy
 import hashlib
 import json
@@ -257,12 +258,20 @@ class Experiment:
     def init_seed(self, max_bytes=8):
         seed = self.config.get('seed')
         if seed is None:
-            seed = int.from_bytes(os.urandom(max_bytes * 2), 'big')
+            seed_bytes = os.urandom(max_bytes * 2)
+            seed = int.from_bytes(seed_bytes, 'big')
+        else:
+            seed = seed % 256 ** (max_bytes * 2)
+            seed_bytes =  seed.to_bytes(max_bytes * 2, 'big')
         self._seed = seed
-        npy_seed, env_seed = divmod(seed, 2 ** (8 * max_bytes))
+        npy_seed, env_seed = divmod(seed, 256 ** max_bytes)
         self.npy_seed = npy_seed
         self.env_seed = env_seed
         self.stage = 0
+
+        save_seed = self.config.get('save_seed')
+        if save_seed:
+            utils.save_dataset(seed_bytes, save_seed, 'seed')
 
     def seed(self, stage=None):
         stage = stage if stage is not None else self.stage
@@ -295,28 +304,30 @@ class Experiment:
         logger.info('Gamma: %f', self.gamma)
 
 
-
     def interact(self, *, policy=lambda e: None, episodes=100, output=None,
-                 collect=None, metrics=(), render=False, stage=None):
-        policy = policy(self)
-        i = evaluation.Interaction(self.env, episodes, self.horizon, policy, collect, metrics, render)
-        self.seed(stage)
-        i.run()
+                 collect=None, metrics=(), render=False, stage=None,
+                 log_level=None):
+        with self.setup_logging(log_level):
+            policy = policy(self)
+            i = evaluation.Interaction(self.env, episodes, self.horizon,
+                                       policy, collect, metrics, render)
+            self.seed(stage)
+            i.run()
 
-        self.interaction = i
+            self.interaction = i
 
-        if metrics:
-            t = i.trace
-            s = np.concatenate((t.time.mean(keepdims=True), t.metrics.mean(0)))
-            self.summary = s
-            logger.info('Summary avg (time, *metrics): %s', s)
+            if metrics:
+                t = i.trace
+                s = np.concatenate((t.time.mean(keepdims=True), t.metrics.mean(0)))
+                self.summary = s
+                logger.info('Summary avg (time, *metrics): %s', s)
 
-        if output:
-            if collect:
-                utils.save_dataset(i.dataset, output)
-            utils.save_dataset(i.trace, output, 'trace')
+            if output:
+                if collect:
+                    utils.save_dataset(i.dataset, output)
+                utils.save_dataset(i.trace, output, 'trace')
 
-        return i
+            return i
 
     def collect(self, **kwargs):
         kwargs['collect'] = True
@@ -328,35 +339,55 @@ class Experiment:
             metrics = evaluation.average, evaluation.discounted(self.gamma)
         return self.interact(metrics=metrics, **kwargs)
 
+
+    def benchmark(self):
+        t = timeit.repeat('self.train()', number=1,
+                          repeat=self.timeit, globals=locals())
+        self.training_time = min(t)
+        logger.info('%d iterations, best of %d: %fs',
+                    self.training_iterations, self.timeit, self.training_time)
+
     def train(self, *, q, algorithm_class, dataset=None, iterations=100,
-              output=None, stage=None, algorithm_config=None):
-        stage_a, stage_b = stage or (stage, stage)
-        if algorithm_config is None:
-            algorithm_config = {}
+              output=None, stage=None, algorithm_config=None, log_level=None):
+        with self.setup_logging(log_level):
+            stage_a, stage_b = stage or (stage, stage)
+            if algorithm_config is None:
+                algorithm_config = {}
 
-        if dataset is None:
-            if self.interaction is not None and self.interaction.collect:
-                dataset = self.interaction.dataset
-            else:
-                raise click.UsageError('Missing dataset.')
+            if dataset is None:
+                if self.interaction is not None and self.interaction.collect:
+                    dataset = self.interaction.dataset
+                else:
+                    raise click.UsageError('Missing dataset.')
 
-        self.seed(stage_a)
-        algorithm_config['dataset'] = dataset
-        algorithm_config['actions'] = self.actions
-        algorithm_config['gamma'] = self.gamma
-        algorithm_config['horizon'] = self.horizon
-        algorithm_config['q'] = q(self.state_dim + self.action_dim, 1)
+            self.seed(stage_a)
+            algorithm_config['dataset'] = dataset
+            algorithm_config['actions'] = self.actions
+            algorithm_config['gamma'] = self.gamma
+            algorithm_config['horizon'] = self.horizon
+            algorithm_config['q'] = q(self.state_dim + self.action_dim, 1)
 
-        self.seed(stage_b)
-        algo = algorithm_class(**algorithm_config)
-        algo.run(iterations)
+            self.seed(stage_b)
+            algo = algorithm_class(**algorithm_config)
+            algo.run(iterations)
 
-        if output:
-            regressor.save_regressor(algo.q, output, 'q')
-            algo.save(output)
+            if output:
+                regressor.save_regressor(algo.q, output, 'q')
+                algo.save(output)
 
-        self.algorithm = algo
-        self.policy = evaluation.QPolicy(algo.q, self.actions)
+            self.algorithm = algo
+            self.policy = evaluation.QPolicy(algo.q, self.actions)
+
+    @contextlib.contextmanager
+    def setup_logging(self, level, logger='trl'):
+        if level is not None:
+            logger = logging.getLogger(logger)
+            initial_level = logger.level
+            logger.setLevel(level)
+            yield
+            logger.setLevel(initial_level)
+        else:
+            yield
 
     def run(self):
         self.collect()

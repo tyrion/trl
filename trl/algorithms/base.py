@@ -77,10 +77,12 @@ class Algorithm(metaclass=AlgorithmMeta):
     # XXX add --timeit
     _LOGGING_OPT = cli.LoggingOption('trl.algorithms')
     cli_params = [
+        # FIXME I think it should be cli.Regressor('q')
         click.Argument(('q',), type=cli.Regressor()),
         click.Option(('-i', '--iterations'), default=100),
         click.Option(('-d', '--dataset'), type=cli.DATASET),
-        click.Option(('-o', '--output')),
+        click.Option(('-o', '--output'), type=cli.PATH,
+                                         default=cli.default_output),
         click.Option(('-s', '--stage'), metavar='N', type=int),
         _LOGGING_OPT
     ] + _LOGGING_OPT.options
