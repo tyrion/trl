@@ -79,7 +79,7 @@ def get_space_dim(space: gym.Space):
 def load_dataset(filepath, name='dataset'):
     logger.info('Loading %s from %s', name, filepath)
     with closing(h5py.File(filepath, 'r')) as file:
-        dataset = file[name][:]
+        dataset = file[name].value
         rec = file[name].attrs.get('rec', False)
         return np.rec.array(dataset, copy=False) if rec else dataset
 
