@@ -120,6 +120,15 @@ class Seed(Dataset):
             return npy_seed * 256 ** 8 + env_seed
 
 
+class IntOrDataset(Dataset):
+
+    def convert(self, value, param, ctx):
+        try:
+            return int(value)
+        except:
+            return super().convert(value, param, ctx)
+
+
 class Path(click.ParamType):
     name = 'path'
 
@@ -158,7 +167,7 @@ DATASET = Dataset()
 ENV = EnvParamType()
 PATH = Path()
 SEED = Seed()
-
+INT_OR_DATASET = IntOrDataset()
 
 _discounted = lambda e: evaluation.discounted(e.gamma)
 METRIC = Metric({

@@ -94,7 +94,7 @@ def invoke_subcommands(ctx, processors, **config):
 
 @click.command('interact')
 @click.option('-p', '--policy', callback=types.policy, metavar='PATH')
-@click.option('-e', '--episodes', default=10)
+@click.option('-e', '--episodes', default=10, type=types.INT_OR_DATASET)
 @click.option('-o', '--output', type=types.PATH, default=types.default_output)
 @click.option('-c', '--collect/--no-collect', is_flag=True, default=False)
 @click.option('-m', '--metric', 'metrics', type=types.METRIC, multiple=True)
