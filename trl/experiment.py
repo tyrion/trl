@@ -271,7 +271,7 @@ class Experiment:
 
         save_seed = self.config.get('save_seed')
         if save_seed:
-            utils.save_dataset(seed_bytes, save_seed, 'seed')
+            utils.save_dataset(np.array(seed_bytes), save_seed, 'seed')
 
     def seed(self, stage=None):
         stage = stage if stage is not None else self.stage
