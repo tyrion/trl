@@ -31,6 +31,19 @@ class AlgorithmMeta(abc.ABCMeta):
         return cls.__name__.lower()
 
 
+def configure_train_stages(ctx, param, value):
+    if value is None:
+        return
+
+    if len(value) == 1:
+        return (value[0], value[0] + 1)
+
+    if len(value) == 2:
+        return value[:2]
+
+    raise click.UsageError("Cannot specify more than two stages.")
+
+
 class Algorithm(metaclass=AlgorithmMeta):
 
     def __init__(self, q, dataset, actions, gamma, horizon):
@@ -83,7 +96,8 @@ class Algorithm(metaclass=AlgorithmMeta):
         click.Option(('-d', '--dataset'), type=cli.DATASET),
         click.Option(('-o', '--output'), type=cli.PATH,
                                          default=cli.default_output),
-        click.Option(('-s', '--stage'), metavar='N', type=int),
+        click.Option(('-s', '--stage'), metavar='N', type=int, multiple=True,
+                                        callback=configure_train_stages),
         _LOGGING_OPT
     ] + _LOGGING_OPT.options
     cli_kwargs = {}
