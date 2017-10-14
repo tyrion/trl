@@ -1,7 +1,8 @@
-import concurrent.futures
+import collections
 import contextlib
 import copy
 import hashlib
+import inspect
 import json
 import logging
 import os
@@ -33,164 +34,6 @@ def get_seed(seed, stage, max_bytes=8):
 
 
 
-
-class Experiment_:
-    gamma = 0.9
-    horizon = 100
-
-    training_episodes = 100
-    training_iterations = 50
-    evaluation_episodes = 20
-
-    use_action_regressor = False
-
-    algorithm_config = {}
-    algorithm_class = None
-
-    timeit = 0
-    render = False
-
-    IGNORE_CONFIG = ('gamma', 'horizon', 'algorithm_config')
-
-    def __init__(self, **config):
-        self.config = config
-
-        for key, value in config.items():
-            if key not in self.IGNORE_CONFIG and hasattr(self.__class__, key):
-                setattr(self, key, value)
-
-    def run(self):
-        self.log_config()
-
-        self.dataset = self.get_dataset()
-        #self.save_dataset(self.dataset_save_path)
-
-        self.training_time = None
-        self.trace = None
-        self.summary = None
-
-        self.seed(3)
-        self.q = self.get_q()
-
-        if self.training_iterations <= 0:
-            logger.info('Skipping training.')
-        else:
-            self.seed(1)
-            self.algorithm_config = self.get_algorithm_config()
-            self.algorithm = self.get_algorithm()
-            logger.info('Training algorithm (iterations: %d)',
-                        self.training_iterations)
-            fn = self.benchmark if self.timeit else self.train
-            fn()
-
-        # using 'not' instead of '<= 0' because it could be an array
-        if not self.evaluation_episodes:
-            logger.info('Skipping evaluation.')
-        else:
-            self.seed(2)
-            self.evaluate()
-
-        self.save()
-        return (self.training_time, self.summary)
-
-    def get_q(self):
-        q = self.config['q']
-        get_q = lambda i=0: q(self.state_dim + i, 1) if callable(q) else q
-        return (ActionRegressor(get_q(), self.actions)
-                if self.use_action_regressor else get_q(self.action_dim))
-
-    def get_algorithm_config(self):
-        config = copy.deepcopy(self.__class__.algorithm_config)
-        config.update(config.get('algorithm_config', {}))
-        return config
-
-    def benchmark(self):
-        t = timeit.repeat('self.train()', number=1,
-                          repeat=self.timeit, globals=locals())
-        self.training_time = min(t)
-        logger.info('%d iterations, best of %d: %fs',
-                    self.training_iterations, self.timeit, self.training_time)
-
-    def save(self):
-        # TODO save initial_states
-        self.save_q(self.q_save_path)
-        if self.evaluation_episodes > 0:
-            self.save_trace(self.trace_save_path)
-        if self.save_path is not None:
-            if self.training_iterations > 0:
-                self.algorithm.save(self.save_path)
-            self.save_config('{}.json'.format(self.save_path))
-
-    def save_q(self, path):
-        if path is not None:
-            attrs = {'time': self.training_time} if self.timeit else None
-            regressor.save_regressor(self.q, path, 'q', attrs)
-
-    _CONFIG_KEYS = ['env_name', 'horizon', 'gamma', 'training_episodes',
-        'training_iterations', 'evaluation_episodes', 'budget',
-        'use_action_regressor', 'np_seed', 'env_seed',
-        'timeit', 'render', 'dataset_load_path', 'dataset_save_path',
-        'q_load_path', 'q_save_path', 'save_path']
-
-    def get_config(self):
-        config = {k: getattr(self, k) for k in self._CONFIG_KEYS}
-        # FIXME handle algorithm_config and initial_states
-        a = self.algorithm_class
-        config['algorithm_class'] = ':'.join([a.__module__, a.__name__])
-        return config
-
-    def save_config(self, path):
-        with open(path, 'w') as fp:
-            json.dump(self.get_config(), fp, sort_keys=True, indent=4)
-
-    @classmethod
-    def run_ith(cls, i, **config):
-        cls._setup(i, **config)
-
-        config = {k: (v.format(i=i)
-                  if k.endswith('path') and isinstance(v, str) else v)
-                  for k, v in config.items()}
-        e = cls(**config)
-        return e.run()
-
-    @classmethod
-    def run_many(cls, n, run=None, workers=None, **config):
-        if run is None:
-            run = cls.run_ith
-        return cls.run_iter(range(n), run, workers, **config)
-
-    @classmethod
-    def run_iter(cls, iter, run, workers=None, **config):
-        logger = logging.getLogger('trl')
-        lvl = logger.level
-        logger.setLevel(logging.ERROR)
-
-        with concurrent.futures.ProcessPoolExecutor(workers) as executor:
-            start_time = time.time()
-            futures = {executor.submit(run, x, **config): i
-                       for i, x in enumerate(iter)}
-            results = {}
-            for future in concurrent.futures.as_completed(futures):
-                i = futures[future]
-                try:
-                    results[i] = r = future.result()
-                except Exception as exc:
-                    logging.info('%d generated an exception.' % i, exc_info=1)
-                else:
-                    logging.info('Experiment %s completed: %s', i, r)
-            t = time.time() - start_time
-            logging.info('Finished in %f (avg: %f)', t, t / len(futures))
-
-        logger.setLevel(lvl)
-        return results
-
-
-    @classmethod
-    def _setup(cls, i, **config):
-        logging.disable(logging.INFO)
-
-
-
 def action(method):
     sig = inspect.signature(method)
     name = '{}_{{}}'.format(method.__name__)
@@ -199,13 +42,6 @@ def action(method):
         return self._action(method, sig, *args, **kwargs)
 
     return wrapper
-
-
-
-import inspect
-import collections
-
-
 
 
 def _get(keys, dicts):
@@ -217,8 +53,6 @@ def _get(keys, dicts):
         except KeyError:
             pass
     return last_dict[last_key]
-
-
 
 
 class Experiment:
