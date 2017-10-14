@@ -98,11 +98,26 @@ class Seed(Dataset):
         super().__init__(dataset_name)
 
     def convert_not_loadable(self, value, param, ctx):
-        try:
+        if value.isdigit():
             return int(value)
-        except:
-            bytes = super().convert_not_loadable(value, param, ctx)
-            return int.from_bytes(bytes, 'big')
+
+        try:
+            data = utils.load_dataset(value, 'seed')
+        except OSError:
+            self.fail('Unable to load seed from %r' % value)
+        except KeyError:
+            return self.convert_legacy(value, param, ctx)
+        else:
+            return int.from_bytes(data, 'big')
+
+    def convert_legacy(self, value, param, ctx):
+        try:
+            data = utils.load_dataset(value)
+            npy_seed, env_seed = data[ctx.meta.get('experiment.index', 0)]
+        except Exception:
+            self.fail('Unable to load seed from %r' % value)
+        else:
+            return npy_seed * 256 ** 8 + env_seed
 
 
 class Path(click.ParamType):
