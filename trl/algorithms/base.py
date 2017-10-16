@@ -203,3 +203,32 @@ class NESPBO(PBO):
                 tnext = self.bo.predict_one(self.q.params)
                 self.q.params = (self.q.params + tnext)\
                     if self.incremental else tnext
+
+
+class WeightedFQI(FQI):
+    def __init__(self, *args, reinit=False, weight_steps=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.weight_steps = weight_steps
+
+    # XXX workaround to specify weight_steps from CLI
+    def run(self, n=10, budget=1):
+        self.weight_steps = int(
+            budget if self.weight_steps is None else self.weight_steps)
+        logger.info('WeightedFQI w/ weight_steps=%d', self.weight_steps)
+        return super().run(n, budget)
+
+    def get_weights(self, y):
+        _, idx, counts = np.unique(y, return_inverse=True, return_counts=True)
+        w = (len(y) / (len(counts) * counts))[idx]
+        return w
+
+    def first_step(self, budget=None):
+        y = self.dataset.reward
+        w = self.get_weights(y) if self.weight_steps > 0 else None
+        self.q.fit(self.SA, y, sample_weight=w)
+
+    def step(self, i=0, budget=None):
+        y = self.dataset.reward + self.gamma * self.max_q()
+        w = self.get_weights(y) if self.weight_steps > i else None
+        self.q.fit(self.SA, y, sample_weight=w)
+        #log(i, y, self.params)

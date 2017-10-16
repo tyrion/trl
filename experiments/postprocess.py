@@ -17,23 +17,25 @@ pat_gradpbo = r'n(\d{2,3})K(\d\d)inc(\d)ind0ui(\d\d)us(\d\d)b(\d\d\d?)no(inf|\d{
 
 f = float
 
-dtype_fqi = np.dtype([('n', int), ('performance', f), ('time', f),
-    ('p_conf', f), ('t_conf', f)])
+perf_time = [('performance', f), ('time', f), ('p_conf', f), ('t_conf', f),
+             ('p_std', f), ('t_std', f)]
+
+dtype_fqi = np.dtype([('n', int)] + perf_time)
 
 dtype_pbo = np.dtype([
     ('n', int), ('K', int), ('incremental', bool), ('budget', int),
     ('learning_rate', f),
-    ('batch_size', int), ('norm', f), ('performance', f), ('time', f),
-    ('p_conf', f), ('t_conf', f)])
+    ('batch_size', int), ('norm', f)] + perf_time)
 
 dtype_gradpbo = np.dtype([
     ('n', int), ('K', int), ('incremental', bool), ('update_index', int),
     ('update_steps', int),
-    ('batch_size', int), ('norm', f), ('update_loss', '<S4'),
-    ('performance', f), ('time', f), ('p_conf', f), ('t_conf', f)])
+    ('batch_size', int), ('norm', f), ('update_loss', '<S4')] + perf_time)
+dtype_generic = np.dtype([('path', '<S50')] + perf_time)
 
 
-def average_experiment_runs(experiment_path, pat='experiment-*.h5'):
+
+def experiment_runs(experiment_path, pat='experiment-*.h5'):
     runs = glob.glob(os.path.join(experiment_path, pat))
     n = len(runs)
     data = np.zeros((n,2))
@@ -42,13 +44,23 @@ def average_experiment_runs(experiment_path, pat='experiment-*.h5'):
             time = fp['q'].attrs['time']
             perf = fp['summary'][-1]
             data[i] = (perf, time)
+    return data
 
+
+def average_experiment_runs(experiment_path, pat='experiment-*.h5', std=True):
+    data = experiment_runs(experiment_path, pat)
+    n = len(data)
     mean = data.mean(axis=0)
-    conf = 1.96 * data.std(axis=0) / np.sqrt(n)
-    return np.array([mean, conf]).ravel()
+    std_ = data.std(axis=0)
+    conf = 1.96 * std_ / np.sqrt(n)
+    return np.array(([mean, conf, std_] if std else [mean, conf])).ravel()
 
 
-def postprocess(base, pat, dtype):
+def postprocess_old(base, pat='(.*)', dtype=dtype_generic):
+    return postprocess(base, pat, dtype, False)
+
+
+def postprocess(base, pat='(.*)', dtype=dtype_generic, std=True):
     experiments = os.listdir(base)
     data = np.recarray((len(experiments),), dtype)
     i = 0
@@ -62,7 +74,7 @@ def postprocess(base, pat, dtype):
                 row.append(type(match))
 
             path = os.path.join(base, name)
-            row.extend(average_experiment_runs(path))
+            row.extend(average_experiment_runs(path, std=std))
             data[i] = tuple(row)
             i += 1
 
