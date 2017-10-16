@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import hashlib
 import logging
 import time
 import concurrent.futures
@@ -28,15 +29,21 @@ logging.config.dictConfig(base.LOGGING)
 
 
 def get_q(input_dim=3, output_dim=1, activation='tanh', metrics=()):
-    d1 = Dense(32, input_dim=input_dim, init='uniform', activation=activation)
-    d2 = Dense(32, init='uniform', activation=activation)
-    d3 = Dense(output_dim, init='uniform', activation='linear',
-               activity_regularizer=regularizers.l1(0.01))
+    activation = 'tanh'
+    layers = [
+        Dense(64, input_dim=input_dim, init='uniform', activation=activation),
+        Dense(64, init='uniform', activation=activation),
+        Dense(output_dim, init='uniform', activation='linear')
+    ]
+    # layers = [
+    #     Dense(64, input_dim=input_dim, init='uniform', activation=activation),
+    #     Dense(64, init='uniform', activation=activation),
+    #     Dense(output_dim, init='uniform', activation='linear'),
+    # ]
 
     model = Sequential()
-    model.add(d1)
-    model.add(d2)
-    model.add(d3)
+    for layer in layers:
+        model.add(layer)
     model.compile(loss='mse', optimizer='adam', metrics=metrics)
 
     return model
@@ -126,14 +133,15 @@ class Metrics(keras.callbacks.Callback):
 class Experiment:
 
     def __init__(self, i, seed=None, outfile='exp.h5', gamma=0.95):
-        np.random.seed(seed)
-
         self.i = i
         self.outfile = outfile
         self.gamma = gamma
-        self.actions = np.array([-4, 4])
+        self._seed = init_seed(seed)
 
-        self.dataset = utils.load_dataset('dataset-%d.h5' % i)
+    def setup(self):
+        logging.info('Setup | seed: %s', self.seed(-1))
+        self.actions = np.array([-4, 4])
+        self.dataset = utils.load_dataset('dataset-%d.h5' % self.i)
 
         self.scaler_x = preprocessing.StandardScaler()
         self.scaler_y = preprocessing.StandardScaler()
@@ -146,32 +154,27 @@ class Experiment:
 
         self.q = get_q()
 
-        self.save_q('init', seed=seed)
-        self.init_weights = self.q.get_weights()
-
-        self.run(10)
-
-    def setup(self):
-        pass
-
-    def resume_from(self, filename):
-        pass
-
-
     def run(self, n, i=None):
+        self.setup()
         # try action regressor
         if i is not None:
-            self.load(i)
+            seed = self.load_q('init', opts=['seed'])['seed']
+            self._seed = init_seed(seed)
+            self.init_weights = self.q.get_weights()
+
+            self.load_q(i=i)
             logging.info('Loaded reg-%d' % i)
             max_q = self.max_q()
             i += 1
         else:
             i = 0
             max_q = 0
+            self.init_weights = self.q.get_weights()
+            self.save_q('init', seed=self._seed)
         y_values = values_at(i)
 
         for i in range(i, n):
-            logging.info('Iteration %d', i)
+            logging.info('Iteration %02d | seed: %s', i, self.seed(i))
             max_q = y_values[search_sorted(y_values, max_q)]
             assert i == 0 or np.any(max_q != 0)
             y = self.dataset.reward + self.gamma * max_q
@@ -192,6 +195,10 @@ class Experiment:
             # save also max_q
             max_q = self.max_q()
             self.save_dataset(max_q, 'max_q', i)
+
+        # save final regressor as trl KerasRegressor
+        r = regressor.KerasRegressor(self.q, 3, self.scaler_x, self.scaler_y)
+        regressor.save_regressor(r, self.outfile, 'q')
 
 
     def max_q(self):
@@ -227,6 +234,13 @@ class Experiment:
         logging.info('%03d Epochs, loss %f' % (len(loss), loss[-1]))
         return h, cbs
 
+    def seed(self, stage):
+        np_seed = get_seed(self._seed, stage)
+        np_seed = [int.from_bytes(bytes(b), 'big')
+                    for b in zip(*[iter(np_seed)]*4)]
+        np.random.seed(np_seed)
+        return np_seed
+
     ## LOAD/SAVE METHODS
 
     def save_q(self, path='reg', i=None, **opts):
@@ -240,13 +254,20 @@ class Experiment:
         path = 'it-%02d/%s' % (i, path) if i is not None else path
         return 'run-%03d/%s' % (self.i, path)
 
-    def load(self, i):
+    def load_q(self, path='reg', i=None, opts=()):
         with closing(h5py.File(self.outfile, 'r')) as f:
-            group = f[self._get_path('reg', i)]
+            group = f[self._get_path(path, i)]
             with regressor._patch_h5(group):
                 self.q.load_weights('whatever')
 
-            self.scaler_y = regressor._loads(group.attrs['scaler'])
+            try:
+                self.scaler_y = regressor._loads(group.attrs['scaler'])
+            except KeyError:
+                pass
+
+            return {o: group.attrs[o] for o in opts}
+
+
 
     def save(self, group):
         group = group.create_group(None)
@@ -305,4 +326,4 @@ if __name__ == '__main__':
         raise Exception('nuooo')
 
 
-    Experiment(9, 0, out_file)
+    Experiment(9, 0, out_file).run(50)
