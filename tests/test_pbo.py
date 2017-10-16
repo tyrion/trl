@@ -63,7 +63,7 @@ def run(algo, seed, **config):
     e = Experiment(spec, horizon=50, seed=seed)
     e.log_config()
     e.collect(episodes=5)
-    e.train(q=build_q, iterations=2, stage=(3,1), algorithm_class=algo, algorithm_config=config)
+    e.train(q=build_q, iterations=2, stage=(3,1), algorithm_class=algo, **config)
     e.evaluate(policy=lambda e: e.policy, episodes=2)
     return e
 

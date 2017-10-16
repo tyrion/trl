@@ -182,7 +182,7 @@ class Experiment:
                     self.training_iterations, self.timeit, self.training_time)
 
     def train(self, *, q, algorithm_class, dataset=None, iterations=100,
-              output=None, stage=None, algorithm_config=None, log_level=None):
+              output=None, stage=None, log_level=None, **algorithm_config):
         with self.setup_logging(log_level):
             stage_a, stage_b = stage or (stage, stage)
             if algorithm_config is None:
