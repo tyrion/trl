@@ -49,6 +49,7 @@ setup(
         'pybrain>=0.3.3',
         'matplotlib>=2.0.0',
         'h5py>=2.6.0',
+        'click>=6.7',
         'ifqi',
     ],
     extras_require={
@@ -57,4 +58,8 @@ setup(
             'Numdifftools>=0.9.20',
         ],
     },
+    entry_points='''
+        [console_scripts]
+        trl=trl.cli:main
+    ''',
 )

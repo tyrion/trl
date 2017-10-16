@@ -2,15 +2,15 @@ import itertools
 import logging
 import time
 
+import click
 import numpy as np
 import theano
 from theano import tensor as T
-from theano.scan_module import until
-from keras.engine.training import slice_X, batch_shuffle, make_batches
+from keras.engine.training import slice_X, make_batches
 from keras import optimizers
 
+from trl import cli, regressor, utils
 from .base import Algorithm
-from .. import regressor, utils
 
 ZERO = T.constant(np.array(0, dtype=theano.config.floatX))
 logger = logging.getLogger('trl.algorithms')
@@ -45,9 +45,15 @@ def zip_sum(a, b):
 
 
 class GradientAlgorithm(Algorithm):
-    def __init__(self, experiment, optimizer='adam', batch_size=10,
-                 norm_value=2, update_index=1):
-        super().__init__(experiment)
+    cli_params = Algorithm.cli_params + [
+        click.Option(('-o', '--optimizer'), default='adam'),
+        click.Option(('--norm', 'norm_value'), type=float, default=2),
+        click.Option(('--update-index',), default=1),
+        click.Option(('-b', '--batch', 'batch_size'), default=10),
+    ]
+    def __init__(self, q, dataset, actions, gamma, horizon, optimizer='adam',
+                 batch_size=10, norm_value=2, update_index=1):
+        super().__init__(q, dataset, actions, gamma, horizon)
         assert len(self.q.inputs) == 1
         assert len(self.q.outputs) == 1
         self.optimizer = optimizers.get(optimizer)
@@ -69,7 +75,7 @@ class GradientAlgorithm(Algorithm):
                                        name='train', allow_input_downcast=True)
         logger.info('Compiled train_f in %fs', time.time() - start_time)
 
-    def step(self, i=0, budget=None):
+    def step(self, i=0):
         np.random.shuffle(self.indices)
         i = i * len(self.batches)
 
@@ -109,14 +115,26 @@ class GenGradFQI(GradientAlgorithm):
 
 
 class GradPBO(GradientAlgorithm):
-    def __init__(self, experiment, bo, K=1, optimizer='adam', batch_size=10,
-                 norm_value=2, update_index=1, update_steps=None,
-                 update_loss=None, incremental=False, independent=False):
-        super().__init__(experiment, optimizer, batch_size, norm_value,
-                         update_index)
-        assert len(bo.inputs) == len(bo.outputs) == len(self.q.trainable_weights)
+    cli_params = GradientAlgorithm.cli_params + [
+        click.Argument(('bo',), type=cli.CALLABLE),
+        click.Option(('-k', 'K'), default=1),
+        click.Option(('--update-steps',), type=int),
+        click.Option(('--update-loss',), type=click.Choice(['auto', 'be'])),
+        click.Option(('--inc/--no-inc', 'incremental'), is_flag=True,
+                     default=False),
+        click.Option(('--ind/--no-ind', 'independent'), is_flag=True,
+                     default=False),
+    ]
 
-        self.bo = bo
+    def __init__(self, q, dataset, actions, gamma, horizon, bo, K=1, optimizer='adam',
+                 batch_size=10, norm_value=2, update_index=1,
+                 update_steps=None, update_loss=None, incremental=False,
+                 independent=False):
+        super().__init__(q, dataset, actions, gamma, horizon,
+                         optimizer, batch_size, norm_value, update_index)
+
+        self.bo = bo = bo(self.q) if callable(bo) else bo
+        assert len(bo.inputs) == len(bo.outputs) == len(self.q.trainable_weights)
         self.K = K
         self.incremental = incremental
         self.independent = independent
@@ -125,8 +143,8 @@ class GradPBO(GradientAlgorithm):
         # Theano variables (prefixed with 't_')
         self.t_dataset = t_d = T.matrix('dataset')
 
-        s_dim = experiment.state_dim
-        a_dim = experiment.action_dim
+        s_dim = dataset.state.ndim
+        a_dim = dataset.action.ndim
         r_idx = s_dim + a_dim
         n_idx = r_idx + 1
         a_idx = n_idx + s_dim
@@ -228,8 +246,8 @@ class GradPBO(GradientAlgorithm):
         self.theta0 = theta0
         self.x = self.update_thetas(self.theta0)
 
-    def run(self, n=10, budget=None):
-        super().run(n, budget)
+    def run(self, n=10):
+        super().run(n)
         # logging.info('Learned theta: %s', self.theta0[0])
         thetaf = self.theta0
         for _ in range(100):
