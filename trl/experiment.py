@@ -9,6 +9,7 @@ import os
 import time
 import timeit
 
+import click
 import h5py
 import gym
 import numpy as np
