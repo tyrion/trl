@@ -31,8 +31,13 @@ def make_grid(x: np.ndarray, y: np.ndarray) -> np.ndarray:
 
 
 def rec_to_array(recarray: np.rec.array) -> np.ndarray:
+    dtype = recarray.dtype
+    while dtype.fields is not None:
+        dtype = dtype[0]
+    dtype = dtype.base
+
     nrows = len(recarray)
-    d = recarray.view(theano.config.floatX, np.ndarray)
+    d = recarray.view(dtype, np.ndarray)
     return d.reshape((nrows, len(d) // nrows))
 
 
@@ -78,7 +83,7 @@ def get_space_dim(space: gym.Space):
 def load_dataset(filepath, name='dataset'):
     logger.info('Loading %s from %s', name, filepath)
     with closing(h5py.File(filepath, 'r')) as file:
-        dataset = file[name][:]
+        dataset = file[name].value
         rec = file[name].attrs.get('rec', False)
         return np.rec.array(dataset, copy=False) if rec else dataset
 
