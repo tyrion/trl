@@ -32,7 +32,7 @@ class AlgorithmMeta(abc.ABCMeta):
 
 
 def configure_train_stages(ctx, param, value):
-    if value is None:
+    if not value or ctx.resilient_parsing:
         return
 
     if len(value) == 1:
