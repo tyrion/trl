@@ -37,7 +37,7 @@ def test_discretize_space_boxnd():
 def test_rec_to_array_simple():
     a = np.zeros(5)
     b = utils.rec_to_array(a)
-    
+
     # works but makes the array 2d
     assert b.shape == (5, 1)
 
@@ -45,7 +45,7 @@ def test_rec_to_array_simple():
     # you should really only pass rec arrays
     with pytest.raises(ValueError):
         b = utils.rec_to_array(a)
-    
+
 
 
 def test_rec_to_array_structured():
@@ -57,10 +57,10 @@ def test_rec_to_array_structured():
 
     a = np.zeros(2, dtype='2f4,f4')
     b = utils.rec_to_array(a)
-    
+
     assert b.dtype == np.dtype('f4')
     assert b.shape == (2, 3)
- 
+
 
 
 def test_rec_to_array_record():
@@ -72,7 +72,7 @@ def test_rec_to_array_record():
 
     a = np.recarray((2,), dtype='2f4,f4')
     b = utils.rec_to_array(a)
-    
+
     assert b.dtype == np.dtype('f4')
     assert b.shape == (2, 3)
 
