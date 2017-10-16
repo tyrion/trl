@@ -25,6 +25,13 @@ def processor(f):
     return wrapper
 
 
+def configure_defaults(ctx, param, value):
+    if not isinstance(value, dict):
+        raise click.UsageError("must be a dict")
+
+    ctx.default_map = value
+
+
 @click.group(chain=True, cls=IndexGroup)
 @click.argument('env_spec', metavar='ENV', type=types.ENV)
 @click.option('-n', metavar='N', type=int, default=1,
@@ -41,6 +48,8 @@ def processor(f):
               expose_value=False, callback=configure_logging_output)
 @click.option('--log-config', metavar='PATH', is_eager=True,
               expose_value=False, callback=configure_logging)
+@click.option('c', '--config', type=types.LOADABLE, is_eager=True,
+              expose_value=False, callback=configure_defaults)
 @click.pass_context
 def cli(ctx, log_level='INFO', **config):
     logger = logging.getLogger('')
@@ -66,7 +75,7 @@ def process_result(processors, n, **config):
     # if we are in a subprocess an index has been set
     if 'experiment.index' in ctx.meta:
         return invoke_subcommands(ctx, processors, **config)
-    
+
     with concurrent.futures.ProcessPoolExecutor(n) as executor:
         futures = {
             executor.submit(_run, i): i

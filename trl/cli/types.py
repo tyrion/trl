@@ -9,7 +9,18 @@ def handle_index(ctx, value):
     return value.format(i=ctx.meta.get('experiment.index', 0))
 
 
-class EnvParamType(click.ParamType):
+class ParamType(click.ParamType):
+
+    def __call__(self, value, param, ctx):
+        if value == '.':
+            value = ctx.lookup_default(param.name)
+            if value is None:
+                self.fail('Not specified in config')
+        return super().__call__(value, param, ctx)
+
+
+
+class EnvParamType(ParamType):
     name = 'env'
 
     def convert(self, value, param, ctx):
@@ -19,7 +30,7 @@ class EnvParamType(click.ParamType):
             raise click.BadParameter(str(exc))
 
 
-class Loadable(click.ParamType):
+class Loadable(ParamType):
     name = 'Loadable'
 
     def get_metavar(self, param):
@@ -40,7 +51,7 @@ class Loadable(click.ParamType):
             return self.load_obj(value)
 
         return self.convert_not_loadable(value, param, ctx)
-    
+
     def convert_not_loadable(self, value, param, ctx):
         self.fail('Not a valid object reference: %s' % value)
 
@@ -129,7 +140,7 @@ class IntOrDataset(Dataset):
             return super().convert(value, param, ctx)
 
 
-class Path(click.ParamType):
+class Path(ParamType):
     name = 'path'
 
     def convert(self, value, param, ctx):
