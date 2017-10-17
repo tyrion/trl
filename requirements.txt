@@ -1,2 +1,3 @@
 git+https://github.com/teopir/ifqi.git#egg=ifqi
 git+https://github.com/pybrain/pybrain.git@9c56862e509c94961a1d428e68642baf2636b76f
+git+https://github.com/hyperopt/hyperopt.git@7e247f5963d05f6e7e9299ff59bc90b126ef7987

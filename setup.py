@@ -51,6 +51,7 @@ setup(
         'h5py>=2.6.0',
         'click>=6.7',
         'ifqi',
+        'hyperopt',
     ],
     extras_require={
         'test': [
