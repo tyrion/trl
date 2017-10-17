@@ -12,6 +12,11 @@ def handle_index(ctx, value):
 class ParamType(click.ParamType):
 
     def __call__(self, value, param, ctx):
+        # We assume that the value is of the correct type if it is not provided
+        # through the command line.
+        if not isinstance(value, str):
+            return value
+
         if value == '.':
             value = ctx.lookup_default(param.name)
             if value is None:

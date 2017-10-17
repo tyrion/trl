@@ -1,20 +1,27 @@
 import concurrent.futures
 import logging
+import pickle
 
 import click
+import hyperopt
+import numpy as np
 
+from trl import utils
 from trl.cli import types
 from trl.cli.logging import LoggingOption, configure_logging, \
                             configure_logging_output
 from trl.experiment import Experiment
 
 
-class IndexGroup(click.Group):
+class Group(click.Group):
 
-    def make_context(self, info_name, args, parent=None, index=None, **extra):
-        if parent is None and index is not None:
-            parent = click.Context(self, info_name=info_name)
-            parent.meta['experiment.index'] = index
+    def make_context(self, info_name, args, parent=None, index=None,
+                     hyperopt_space=None, **extra):
+        if parent is None:
+            parent = click.Context(self, info_name='')
+            parent.meta['hyperopt.space'] = hyperopt_space
+            if index is not None:
+                parent.meta['experiment.index'] = index
 
         return super().make_context(info_name, args, parent, **extra)
 
@@ -26,13 +33,73 @@ def processor(f):
 
 
 def configure_defaults(ctx, param, value):
+    if value is None:
+        return
     if not isinstance(value, dict):
         raise click.UsageError("must be a dict")
+
+    if ctx.default_map is not None:
+        value = value.copy()
+        utils.rec_update(value, ctx.default_map)
 
     ctx.default_map = value
 
 
-@click.group(chain=True, cls=IndexGroup)
+def configure_hyperopt(ctx, param, value):
+    if value is None or ctx.resilient_parsing:
+        return
+
+    if ctx.meta['hyperopt.space'] is not None:
+        return True
+
+    _meta = value.get('_meta', {})
+    max_evals = _meta.get('max_evals', 10)
+
+    try:
+        trials_path = _meta['trials']
+        with open(trials_path, 'rb') as fp:
+            trials = pickle.load(fp)
+        print(len(trials))
+    except KeyError:
+        trials = None
+    except Exception as exc:
+        #logging.error('Error while loading trials', exc_info=exc)
+        trials = hyperopt.Trials()
+    else:
+        print('Loaded trials from', trials_path)
+
+    try:
+        hyperopt.fmin(hyperopt_run_master, space=value, max_evals=max_evals,
+                        algo=hyperopt.tpe.suggest, verbose=2, trials=trials,
+                        return_argmin=0, pass_expr_memo_ctrl=True)
+    except (SystemExit, KeyboardInterrupt, Exception):
+        print('Interrupt')
+
+    print('Finished hyperopt')
+
+    if trials is None or len(trials) < 1:
+        ctx.exit()
+
+    tt = trials._dynamic_trials[-1]
+    if tt['result']['status'] not in (hyperopt.STATUS_OK, hyperopt.STATUS_FAIL):
+        print('discarding last trial')
+        trials._ids.discard(tt['tid'])
+        del trials._dynamic_trials[-1]
+        trials.refresh()
+
+    if len(trials) < 1: # should count the successful statuses
+        ctx.exit()
+
+    print(trials.argmin)
+    print(trials.best_trial['result'])
+
+    with open(trials_path, 'wb') as fp:
+        pickle.dump(trials, fp)
+
+    ctx.exit()
+
+
+@click.group(chain=True, cls=Group)
 @click.argument('env_spec', metavar='ENV', type=types.ENV)
 @click.option('-n', metavar='N', type=int, default=1,
               help='Execute N experiments')
@@ -48,8 +115,10 @@ def configure_defaults(ctx, param, value):
               expose_value=False, callback=configure_logging_output)
 @click.option('--log-config', metavar='PATH', is_eager=True,
               expose_value=False, callback=configure_logging)
-@click.option('c', '--config', type=types.LOADABLE, is_eager=True,
+@click.option('-c', '--config', type=types.LOADABLE, is_eager=True,
               expose_value=False, callback=configure_defaults)
+@click.option('--hyperopt', type=types.LOADABLE, is_eager=True,
+              callback=configure_hyperopt)
 @click.pass_context
 def cli(ctx, log_level='INFO', **config):
     logger = logging.getLogger('')
@@ -60,25 +129,33 @@ def cli(ctx, log_level='INFO', **config):
 LoggingOption().register(cli)
 
 
-def _run(i):
-    return cli(standalone_mode=False, index=i)
-
-
 @cli.resultcallback()
 def process_result(processors, n, **config):
     logger = logging.getLogger('trl.cli')
     ctx = click.get_current_context()
 
-    if n < 2:
-        ctx.meta['experiment.index'] = 0
+    if config['hyperopt']:
+        run_slave = hyperopt_run_slave
+        run_args = (ctx.meta['hyperopt.space'],)
+        invoke_subcommands = hyperopt_invoke_subcommands
+    else:
+        run_slave = default_run_slave
+        run_args = ()
+        invoke_subcommands = default_invoke_subcommands
 
     # if we are in a subprocess an index has been set
     if 'experiment.index' in ctx.meta:
         return invoke_subcommands(ctx, processors, **config)
 
+    # if we need to run just one experiment do not start the multiprocessing
+    # machinery.
+    if n < 2:
+        ctx.meta['experiment.index'] = 0
+        return {0: invoke_subcommands(ctx, processors, **config)}
+
     with concurrent.futures.ProcessPoolExecutor(n) as executor:
         futures = {
-            executor.submit(_run, i): i
+            executor.submit(run_slave, i, *run_args): i
             for i in range(n)
         }
         results = {}
@@ -91,14 +168,55 @@ def process_result(processors, n, **config):
             else:
                 logger.info('Experiment %s completed: %s', i, r)
 
+    return results
 
-def invoke_subcommands(ctx, processors, **config):
+
+def default_invoke_subcommands(ctx, processors, **config):
     config = {k: v for k, v in config.items() if v is not None}
     ctx.obj = e = Experiment(**config)
     e.log_config()
 
+    result = None
     for processor in processors:
-        processor(e)
+        result = processor(e)
+
+    return (e, result)
+
+
+def default_run_slave(i):
+    # FIXME disabled return because returned object cannot be pickled
+    cli(standalone_mode=False, index=i)
+
+
+def hyperopt_run_master(expr, memo, ctrl):
+    space = hyperopt.pyll.rec_eval(expr, memo=memo, print_node_on_error=False)
+    tid = ctrl.current_trial['tid']
+    # TODO set tid somewhere in ctx.meta
+    results = cli(standalone_mode=False, hyperopt_space=space, default_map=space)
+    try:
+        score = np.fromiter(results.values(), float, count=len(results))
+    except Exception as exc:
+        logging.error("Error during trial", exc_info=exc)
+        return {'status': hyperopt.STATUS_FAIL}
+    else:
+        res = {
+            'loss': -score.mean(),
+            'loss_variance': score.var(),
+            'status': hyperopt.STATUS_OK,
+            # 'hash': name,
+        }
+        print('Trial %d completed: %s' % (tid, res))
+        return res
+
+
+def hyperopt_run_slave(i, space):
+    return cli(standalone_mode=False, index=i, hyperopt_space=space,
+               default_map=space)
+
+
+def hyperopt_invoke_subcommands(ctx, processors, **config):
+    (exp, res) = default_invoke_subcommands(ctx, processors, **config)
+    return exp.summary[1]
 
 
 @click.command('interact')
