@@ -152,13 +152,15 @@ class Path(ParamType):
         return handle_index(ctx, value)
 
 
-# could use env var?
 def set_default_output(ctx, param, value):
+    """Set the global default output file path"""
+    # XXX could use env var?
     if value is not None:
         ctx.meta['default.output'] = handle_index(ctx, value)
 
 
 def default_output():
+    """Get the configured global default file path or None"""
     ctx = click.get_current_context()
     return ctx.meta.get('default.output')
 
