@@ -1,3 +1,4 @@
+import collections
 import logging
 from contextlib import closing
 
@@ -154,3 +155,16 @@ class Split(Layer):
 
     def compute_mask(self, input, input_mask=None):
         return [None] * len(self.original)
+
+
+def rec_update(d, u):
+    """
+    Recursive dict update by Alex Martelli.
+    See https://stackoverflow.com/a/3233356/641317
+    """
+    for k, v in u.items():
+        if isinstance(v, collections.Mapping):
+            d[k] = rec_update(d.get(k, {}), v)
+        else:
+            d[k] = v
+    return d
