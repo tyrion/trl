@@ -132,7 +132,9 @@ def k_init(init):
     """
     (name, kwargs) = (init, {}) if isinstance(init, str) else init
     fn = getattr(keras.initializations, name)
-    return functools.partial(fn, **kwargs) if kwargs else fn
+    if kwargs:
+        fn = functools.update_wrapper(functools.partial(fn, **kwargs), fn)
+    return fn
 
 
 class Split(Layer):
