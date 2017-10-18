@@ -1,4 +1,6 @@
+import functools
 import importlib
+
 import click
 import gym
 
@@ -11,18 +13,17 @@ def handle_index(ctx, value):
 
 class ParamType(click.ParamType):
 
-    def __call__(self, value, param, ctx):
-        # We assume that the value is of the correct type if it is not provided
-        # through the command line.
-        if not isinstance(value, str):
-            return value
+    def is_correct_type(self, value):
+        return not isinstance(value, str)
 
+    def __call__(self, value, param, ctx):
         if value == '.':
             value = ctx.lookup_default(param.name)
             if value is None:
                 self.fail('Not specified in config')
-        return super().__call__(value, param, ctx)
 
+        return value if self.is_correct_type(value) else \
+                super().__call__(value, param, ctx)
 
 
 class EnvParamType(ParamType):
@@ -63,9 +64,12 @@ class Loadable(ParamType):
 
 class Callable(Loadable):
 
+    def is_correct_type(self, value):
+        return callable(value)
+
     def load_obj(self, path):
         obj = super().load_obj(path)
-        if not callable(obj):
+        if not self.is_correct_type(obj):
             self.fail('Loaded object is not callable')
         return obj
 
@@ -82,9 +86,27 @@ class Dataset(Loadable):
             self.fail('Unable to read dataset from %s' % value)
 
 
-class Regressor(Callable):
+class Regressor(Loadable):
     def __init__(self, regressor_name='regressor'):
         self.regressor_name = regressor_name
+
+    def is_correct_type(self, value):
+        return isinstance(value, regressor.Regressor)
+
+    def convert(self, value, param, ctx):
+        if isinstance(value, dict):
+            return self.convert_from_dict(value, param, ctx)
+
+        return super().convert(value, param, ctx)
+
+    def load_obj(self, path):
+        obj = super().load_obj(path)
+        if isinstance(obj, dict):
+            return self.convert_from_dict(value, param, ctx)
+
+        if callable(obj):
+            return obj
+        self.fail('Loaded object is not a dict or callable.')
 
     def convert_not_loadable(self, value, param, ctx):
         try:
@@ -93,6 +115,10 @@ class Regressor(Callable):
             self.fail('Unable to load regressor from %s' % value)
         else:
             return lambda *a, **kw: regr
+
+    def convert_from_dict(self, value, param, ctx):
+        fn = regressor.KerasRegressor.from_params
+        return functools.partial(fn, **value)
 
 
 class Metric(Callable):

@@ -18,6 +18,8 @@ from theano.tensor.var import TensorVariable
 from keras.engine.topology import to_list
 from ifqi.models import actionregressor
 
+from trl import utils
+
 
 logger = logging.getLogger(__name__)
 
@@ -315,6 +317,33 @@ class KerasRegressor(SymbolicRegressor):
 
     # compatibility with ifqi
     n_inputs = lambda self: self.input_dim
+
+
+    @classmethod
+    def from_params(cls, input_dim, output_dim, layers, neurons, batch_size,
+                    nb_epoch, activation, init, optimizer, loss='mse',
+                    early_stopping=None, Model=None):
+        from keras.layers import Input, Dense
+        from keras import callbacks, models
+
+        Model = models.Model if Model is None else Model
+
+        assert layers >= 1, "Layers must be greater than 1"
+
+        n = neurons // layers
+        x = inputs = Input(shape=(input_dim,), dtype=theano.config.floatX)
+        for layer in range(layers):
+            x = Dense(n, activation=activation, init=utils.k_init(init))(x)
+        x = Dense(output_dim, activation='linear', init=utils.k_init(init))(x)
+
+        model = Model(input=inputs, output=x)
+        model.compile(loss=loss, optimizer=optimizer)
+
+        cb = [callbacks.EarlyStopping(verbose=0, **early_stopping)] \
+                if early_stopping is not None else None
+
+        return cls(model, input_dim, callbacks=cb, verbose=0,
+                   nb_epoch=nb_epoch, batch_size=batch_size)
 
 
 class SkLearnRegressorMixin(Regressor):

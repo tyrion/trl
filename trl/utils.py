@@ -1,10 +1,12 @@
 import collections
+import functools
 import logging
 from contextlib import closing
 
 import h5py
-import numpy as np
 import gym
+import keras
+import numpy as np
 import theano
 from gym import spaces
 from keras import backend as K
@@ -119,6 +121,18 @@ def k_concat(inputs):
         return inputs
     fn = lambda v, s: v if len(s) <3 else Reshape((np.prod(s[1:]),))(v)
     return merge([fn(v, v._keras_shape) for v in inputs], mode='concat')
+
+
+def k_init(init):
+    """
+    Return a keras initialization function.
+
+    >>> k_init('glorot_uniform')
+    >>> k_init('uniform', scale=0.5)
+    """
+    (name, kwargs) = (init, {}) if isinstance(init, str) else init
+    fn = getattr(keras.initializations, name)
+    return functools.partial(fn, **kwargs) if kwargs else fn
 
 
 class Split(Layer):
