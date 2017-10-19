@@ -8,7 +8,7 @@ from trl import evaluation, regressor, utils
 
 
 def handle_index(ctx, value):
-    return value.format(i=ctx.meta.get('experiment.index', 0))
+    return value.format(**ctx.meta['format.opts'])
 
 
 class ParamType(click.ParamType):
@@ -163,9 +163,9 @@ class Seed(Dataset):
     def convert_legacy(self, value, param, ctx):
         try:
             data = utils.load_dataset(value)
-            npy_seed, env_seed = data[ctx.meta.get('experiment.index', 0)]
+            npy_seed, env_seed = data[ctx.meta['experiment.index'] or 0]
         except Exception:
-            self.fail('Unable to load seed from %r' % value)
+            self.fail('Unable to load legacy seed from %r' % value)
         else:
             return npy_seed * 256 ** 8 + env_seed
 

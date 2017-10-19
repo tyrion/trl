@@ -16,13 +16,17 @@ from trl.experiment import Experiment
 class Group(click.Group):
 
     def make_context(self, info_name, args, parent=None, index=None,
-                     hyperopt_space=None, **extra):
+                     hyperopt_space=None, hyperopt_tid=None, **extra):
         if parent is None:
             parent = click.Context(self, info_name='')
             parent.meta['hyperopt.space'] = hyperopt_space
-            if index is not None:
-                parent.meta['experiment.index'] = index
-
+            parent.meta['hyperopt.tid'] = hyperopt_tid
+            parent.meta['experiment.index'] = index
+            # FIXME the or is a hack, loading files lazily is a solution
+            parent.meta['format.opts'] = {
+                'i': index or 0,
+                't': hyperopt_tid or 0
+            }
         return super().make_context(info_name, args, parent, **extra)
 
 
@@ -72,8 +76,10 @@ def configure_hyperopt(ctx, param, value):
         hyperopt.fmin(hyperopt_run_master, space=value, max_evals=max_evals,
                         algo=hyperopt.tpe.suggest, verbose=2, trials=trials,
                         return_argmin=0, pass_expr_memo_ctrl=True)
-    except (SystemExit, KeyboardInterrupt, Exception):
+    except (SystemExit, KeyboardInterrupt, click.Abort):
         print('Interrupt')
+    except Exception as exc:
+        logging.error("Error during fmin", exc_info=exc)
 
     print('Finished hyperopt')
 
@@ -144,7 +150,7 @@ def process_result(processors, n, **config):
         invoke_subcommands = default_invoke_subcommands
 
     # if we are in a subprocess an index has been set
-    if 'experiment.index' in ctx.meta:
+    if ctx.meta['experiment.index'] is not None:
         return invoke_subcommands(ctx, processors, **config)
 
     # if we need to run just one experiment do not start the multiprocessing
@@ -191,8 +197,8 @@ def default_run_slave(i):
 def hyperopt_run_master(expr, memo, ctrl):
     space = hyperopt.pyll.rec_eval(expr, memo=memo, print_node_on_error=False)
     tid = ctrl.current_trial['tid']
-    # TODO set tid somewhere in ctx.meta
-    results = cli(standalone_mode=False, hyperopt_space=space, default_map=space)
+    results = cli(standalone_mode=False, default_map=space, hyperopt_tid=tid,
+                  hyperopt_space=space)
     try:
         score = np.fromiter(results.values(), float, count=len(results))
     except Exception as exc:
@@ -216,6 +222,7 @@ def hyperopt_run_slave(i, space):
 
 def hyperopt_invoke_subcommands(ctx, processors, **config):
     (exp, res) = default_invoke_subcommands(ctx, processors, **config)
+    # FIXME with current setup this is returning avgJ instead of discountedJ
     return exp.summary[1]
 
 
