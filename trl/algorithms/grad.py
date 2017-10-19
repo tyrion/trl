@@ -116,7 +116,7 @@ class GenGradFQI(GradientAlgorithm):
 
 class GradPBO(GradientAlgorithm):
     cli_params = GradientAlgorithm.cli_params + [
-        click.Argument(('bo',), type=cli.CALLABLE),
+        click.Argument(('bo',), type=cli.BO_REGRESSOR),
         click.Option(('-k', 'K'), default=1),
         click.Option(('--update-steps',), type=int),
         click.Option(('--update-loss',), type=click.Choice(['auto', 'be'])),

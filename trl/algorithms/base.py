@@ -127,7 +127,7 @@ class FQI(Algorithm):
 
 class PBO(Algorithm):
     cli_params = Algorithm.cli_params + [
-        click.Argument(('bo',), type=cli.CALLABLE),
+        click.Argument(('bo',), type=cli.BO_REGRESSOR),
         click.Option(('-k', 'K'), default=1),
         click.Option(('--norm', 'norm_value'), type=float, default=2),
         click.Option(('--update-index',), default=1),

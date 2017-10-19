@@ -91,7 +91,7 @@ class Regressor(Loadable):
         self.regressor_name = regressor_name
 
     def is_correct_type(self, value):
-        return isinstance(value, regressor.Regressor)
+        return callable(value)
 
     def convert(self, value, param, ctx):
         if isinstance(value, dict):
@@ -119,6 +119,14 @@ class Regressor(Loadable):
     def convert_from_dict(self, value, param, ctx):
         fn = regressor.KerasRegressor.from_params
         return functools.partial(fn, **value)
+
+
+class BORegressor(Regressor):
+    def __init__(self, regressor_name='bo'):
+        super().__init__(regressor_name)
+
+    def convert_from_dict(self, value, param, ctx):
+        return utils.build_bo(**value)
 
 
 class Metric(Callable):
@@ -212,6 +220,7 @@ ENV = EnvParamType()
 PATH = Path()
 SEED = Seed()
 INT_OR_DATASET = IntOrDataset()
+BO_REGRESSOR = BORegressor()
 
 _discounted = lambda e: evaluation.discounted(e.gamma)
 METRIC = Metric({

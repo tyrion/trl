@@ -11,7 +11,8 @@ import theano
 from gym import spaces
 from keras import backend as K
 from keras.engine.topology import Layer
-from keras.layers import Input, Reshape, merge
+from keras.layers import Dense, Input, Reshape, merge
+from keras.models import Model
 
 from trl import evaluation
 
@@ -135,6 +136,36 @@ def k_init(init):
     if kwargs:
         fn = functools.update_wrapper(functools.partial(fn, **kwargs), fn)
     return fn
+
+
+def k_layers(inputs, *, layers, neurons, activation, init, output_dim=1):
+    """
+    Build Dense layers to be used in a Keras model.
+    """
+    assert layers >= 1, "Layers must be greater than 1"
+    n = neurons // layers
+    x = inputs
+    for layer in range(layers):
+        x = Dense(n, activation=activation, init=k_init(init))(x)
+    return Dense(output_dim, activation='linear', init=k_init(init))(x)
+
+
+def build_bo(*, layers, neurons, activation, init):
+    from trl import regressor
+
+    def bo(q):
+        inputs = t_make_inputs(q.trainable_weights)
+        output_dim = sum([v.get_value().size for v in q.trainable_weights])
+        c = k_concat(inputs)
+
+        outputs = k_layers(
+            c, layers=layers, neurons=neurons, activation=activation,
+            init=init, output_dim=output_dim)
+        outputs = Split(inputs)(outputs)
+        model = Model(input=inputs, output=outputs)
+        return regressor.KerasRegressor(model, None)
+
+    return bo
 
 
 class Split(Layer):

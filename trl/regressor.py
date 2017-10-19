@@ -320,23 +320,18 @@ class KerasRegressor(SymbolicRegressor):
 
 
     @classmethod
-    def from_params(cls, input_dim, output_dim, layers, neurons, batch_size,
-                    nb_epoch, activation, init, optimizer, loss='mse',
-                    early_stopping=None, Model=None):
+    def from_params(cls, input_dim, output_dim=1, *, layers, neurons, activation, init,
+                    batch_size, nb_epoch, optimizer='adam', loss='mse',
+                    early_stopping=None):
         from keras.layers import Input, Dense
         from keras import callbacks, models
 
-        Model = models.Model if Model is None else Model
+        inputs = Input(shape=(input_dim,), dtype=theano.config.floatX)
+        outputs = utils.k_layers(
+            inputs, layers=layers, neurons=neurons, activation=activation,
+            init=init, output_dim=output_dim)
 
-        assert layers >= 1, "Layers must be greater than 1"
-
-        n = neurons // layers
-        x = inputs = Input(shape=(input_dim,), dtype=theano.config.floatX)
-        for layer in range(layers):
-            x = Dense(n, activation=activation, init=utils.k_init(init))(x)
-        x = Dense(output_dim, activation='linear', init=utils.k_init(init))(x)
-
-        model = Model(input=inputs, output=x)
+        model = models.Model(input=inputs, output=outputs)
         model.compile(loss=loss, optimizer=optimizer)
 
         cb = [callbacks.EarlyStopping(verbose=0, **early_stopping)] \
