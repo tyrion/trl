@@ -142,7 +142,7 @@ def process_result(processors, n, **config):
 
     if config['hyperopt']:
         run_slave = hyperopt_run_slave
-        run_args = (ctx.meta['hyperopt.space'],)
+        run_args = (ctx.meta['hyperopt.space'], ctx.meta['hyperopt.tid'])
         invoke_subcommands = hyperopt_invoke_subcommands
     else:
         run_slave = default_run_slave
@@ -215,9 +215,9 @@ def hyperopt_run_master(expr, memo, ctrl):
         return res
 
 
-def hyperopt_run_slave(i, space):
+def hyperopt_run_slave(i, space, tid):
     return cli(standalone_mode=False, index=i, hyperopt_space=space,
-               default_map=space)
+               default_map=space, hyperopt_tid=tid)
 
 
 def hyperopt_invoke_subcommands(ctx, processors, **config):
