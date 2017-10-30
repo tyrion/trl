@@ -95,9 +95,11 @@ class Algorithm(metaclass=AlgorithmMeta):
         click.Option(('-i', '--iterations'), default=100),
         click.Option(('-d', '--dataset'), type=cli.DATASET),
         click.Option(('-o', '--output'), type=cli.PATH,
-                                         default=cli.default_output),
+                     default=cli.default_output),
         click.Option(('-s', '--stage'), metavar='N', type=int, multiple=True,
-                                        callback=configure_train_stages),
+                     callback=configure_train_stages),
+        click.Option(('--ar', 'use_action_regressor'), default=False,
+                     is_flag=True),
         _LOGGING_OPT
     ] + _LOGGING_OPT.options
     cli_kwargs = {}

@@ -136,7 +136,7 @@ class Experiment:
         logger.info('Random seed: %d', self._seed)
         logger.info('Discretized actions (%d): %s', len(self.actions),
             np.array2string(self.actions, max_line_width=np.inf))
-        logger.info('Gamma: %f', self.gamma)
+        logger.info('Gamma / Horizon: %f / %d', self.gamma, self.horizon)
 
 
     def interact(self, *, policy=lambda e: None, episodes=100, output=None,
@@ -183,7 +183,8 @@ class Experiment:
                     self.training_iterations, self.timeit, self.training_time)
 
     def train(self, *, q, algorithm_class, dataset=None, iterations=100,
-              output=None, stage=None, log_level=None, **algorithm_config):
+              output=None, stage=None, log_level=None,
+              use_action_regressor=False, **algorithm_config):
         with self.setup_logging(log_level):
             stage_a, stage_b = stage or (stage, stage)
             if algorithm_config is None:
@@ -201,6 +202,10 @@ class Experiment:
             algorithm_config['gamma'] = self.gamma
             algorithm_config['horizon'] = self.horizon
             algorithm_config['q'] = q(self.state_dim + self.action_dim, 1)
+            algorithm_config['q'] = (
+                regressor.ActionRegressor(q(self.state_dim, 1), self.actions)
+                if use_action_regressor else
+                q(self.state_dim + self.action_dim, 1))
 
             self.seed(stage_b)
             algo = algorithm_class(**algorithm_config)
