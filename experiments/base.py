@@ -3,17 +3,6 @@ import logging
 import logging.config
 import math
 
-os.environ.setdefault('KERAS_BACKEND', 'theano')
-
-import theano
-
-floatX = theano.config.floatX
-import keras # this will override theano.config.floatX
-
-# respect theano settings.
-keras.backend.set_floatx(floatX)
-theano.config.floatX = floatX
-
 import numpy as np
 from theano import tensor as T
 from scipy.optimize import curve_fit
@@ -23,31 +12,6 @@ from trl import algorithms, regressor, utils
 from trl.algorithms import ifqi
 from trl.experiment import Experiment
 
-
-LOGGING = {
-    'version': 1,
-    'formatters': {
-        'default': {
-            'format': '%(asctime)s %(levelname)5s:%(name)s: %(message)s',
-        },
-    },
-    'handlers': {
-        'console': {
-            'class': 'logging.StreamHandler',
-            'level': 'INFO',
-            'formatter': 'default',
-        },
-    },
-    'loggers': {
-        'trl': {
-            'level': 'DEBUG',
-        },
-    },
-    'root': {
-        'level': 'DEBUG',
-        'handlers': ['console'],
-    },
-}
 
 ALGORITHMS = {
     'fqi': algorithms.FQI,
@@ -221,61 +185,3 @@ def handler(signum, frame):
 def bo(q):
     dim = len(q.params)
     return build_nn(input_dim=dim, output_dim=dim)
-
-
-class CLIExperiment(Experiment):
-    q_load_path = 'curve_fit'
-    budget = 1
-
-    def get_q(self):
-        q = self.q_load_path
-        build = globals().get('build_{}'.format(q), None)
-        if build is None:
-            return super().get_q()
-        return build(input_dim=self.input_dim, output_dim=1)
-
-    def get_algorithm_config(self):
-        config = super().get_algorithm_config()
-        if self.algorithm_class in (algorithms.NESPBO, ifqi.PBO,
-                                    algorithms.GradPBO, ifqi.GradPBO):
-            dim = len(self.q.params)
-            #config['bo'] = build_nn(input_dim=dim, output_dim=dim)
-            config['bo'] = build_bo(self.q)
-        # if self.algorithm_class == algorithms.GradPBO:
-        #     config.update({
-        #         'update_loss': 'be',
-        #         'update_steps': 200,
-        #         'batch_size': 100,
-        #     })
-        return config
-
-    @classmethod
-    def _setup(cls, i, logfile='experiment-{i}.log', **kwargs):
-        LOGGING['handlers']['file'] = {
-            'class': 'logging.FileHandler',
-            'level': 'INFO',
-            'formatter': 'default',
-            'filename': logfile.format(i=i),
-            'mode': 'w',
-        }
-        LOGGING['root']['handlers'] = ['file']
-        logging.config.dictConfig(LOGGING)
-
-    def get_training_episodes(self):
-        if self.env_name != 'CarPole-v0':
-            return super().get_training_episodes()
-        n = self.config.get('training_episodes', 2000)
-        unw = self.env.unwrapped
-        x = unw.x_threshold
-        t = 0.95 * unw.theta_threshold_radians
-        return np.random.uniform([-x, -3.5, -t, -3], [x, 3.5, t, 3], (n, 4))
-
-    def get_evaluation_episodes(self):
-        if self.env_name != 'CarOnHill-v0':
-            return super().get_evaluation_episodes()
-
-        n = self.config.get('evaluation_episodes', self.__class__.evaluation_episodes)
-        if n <= 0:
-            return n
-        n = n ** 0.5
-        return utils.make_grid(np.linspace(-1, 1, n), np.linspace(-3, 3, n))
