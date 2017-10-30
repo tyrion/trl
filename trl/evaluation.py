@@ -76,8 +76,9 @@ class Interaction:
         self.trace = np.recarray((self.n,), [
             ('state_i', floatX, self.state_dim),
             ('state_f', floatX, self.state_dim),
-            ('time', int)
-        ] + ([('metrics', floatX, (len(m),))] if m else []))
+            ('time', int),
+            ('metrics', floatX, (len(m),))
+        ])
 
     def allocate_dataset(self):
         n = self.horizon * (self.n if self.collect else 1)
@@ -123,11 +124,15 @@ class Interaction:
 
             trace.state_f = state
             trace.time = t
-            if self.metrics:
-                trace.metrics = [m(episode) for m in self.metrics]
+            trace.metrics = [m(episode) for m in self.metrics]
 
             logger.info('Episode %3d: %s', e, trace)
         self.dataset = self.dataset[:i]
+
+        time = self.trace.time.mean(keepdims=True)
+        metrics = self.trace.metrics.mean(0)
+        self.summary = np.concatenate((time, metrics))
+        logger.info('Summary avg (time, *metrics): %s', self.summary)
 
 
 def interact(env, n=1, horizon=100, policy=None, collect=False,
