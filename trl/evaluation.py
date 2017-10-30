@@ -77,7 +77,7 @@ class Interaction:
             ('state_i', floatX, self.state_dim),
             ('state_f', floatX, self.state_dim),
             ('time', int)
-        ] + ([('metrics', floatX, len(m))] if m else []))
+        ] + ([('metrics', floatX, (len(m),))] if m else []))
 
     def allocate_dataset(self):
         n = self.horizon * (self.n if self.collect else 1)
@@ -132,6 +132,7 @@ class Interaction:
 
 def interact(env, n=1, horizon=100, policy=None, collect=False,
                      metrics=(), render=False):
+    # FIXME Interaction
     i = Interact(env, n, horizon, policy, collect, metrics, render)
     i.interact()
     return i.dataset, i.trace
