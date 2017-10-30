@@ -42,7 +42,7 @@ setup(
     packages=['trl'],
     install_requires=[
         'numpy>=1.11.0,<1.12.0',
-        'scipy>=0.18.1',
+        'scipy>=0.18.1,<1.0', # <1.0 required for pyBrain
         'keras>=1.2.1,<2.0',
         'gym>=0.7.2',
         'scikit-learn>=0.18.1',
