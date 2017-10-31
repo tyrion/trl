@@ -160,7 +160,11 @@ class Experiment:
             if output:
                 if collect:
                     utils.save_dataset(i.dataset, output)
-                utils.save_dataset(i.trace, output, 'trace')
+                # XXX do not store the "metrics" field if it is 0-length due
+                # to a bug in h5py: https://github.com/h5py/h5py/issues/944
+                trace = i.trace[[
+                    'state_i', 'state_f', 'time']] if not metrics else i.trace
+                utils.save_dataset(trace, output, 'trace')
 
             return i
 
