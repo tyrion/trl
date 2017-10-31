@@ -6,11 +6,14 @@ import click
 import hyperopt
 import numpy as np
 
-from trl import utils
+from trl import evaluation, utils
 from trl.cli import types
 from trl.cli.logging import LoggingOption, configure_logging, \
                             configure_logging_output
 from trl.experiment import Experiment
+
+
+logger = logging.getLogger('trl.cli')
 
 
 class Group(click.Group):
@@ -137,47 +140,68 @@ LoggingOption().register(cli)
 
 @cli.resultcallback()
 def process_result(processors, n, **config):
-    logger = logging.getLogger('trl.cli')
     ctx = click.get_current_context()
 
-    if config['hyperopt']:
-        run_slave = hyperopt_run_slave
-        run_args = (ctx.meta['hyperopt.space'], ctx.meta['hyperopt.tid'])
-        invoke_subcommands = hyperopt_invoke_subcommands
-    else:
-        run_slave = default_run_slave
-        run_args = ()
-        invoke_subcommands = default_invoke_subcommands
+    run_kwargs = {
+        'hyperopt_space': ctx.meta['hyperopt.space'],
+        'default_map': ctx.meta['hyperopt.space'],
+        'hyperopt_tid': ctx.meta['hyperopt.tid']
+    } if config['hyperopt'] else {}
 
     # if we are in a subprocess an index has been set
     if ctx.meta['experiment.index'] is not None:
         return invoke_subcommands(ctx, processors, **config)
 
+    results = {}
     # if we need to run just one experiment do not start the multiprocessing
     # machinery.
     if n < 2:
         ctx.meta['experiment.index'] = 0
-        return {0: invoke_subcommands(ctx, processors, **config)}
+        # FIXME duplicated code from run_slave
+        exp, res = invoke_subcommands(ctx, processors, **config)
+        results[0] = res.summary \
+                     if isinstance(res, evaluation.Interaction) else None
+    else:
+        with concurrent.futures.ProcessPoolExecutor(n) as executor:
+            futures = {
+                executor.submit(run_slave, i, **run_kwargs): i
+                for i in range(n)
+            }
+            for future in concurrent.futures.as_completed(futures):
+                i = futures[future]
+                try:
+                    results[i] = r = future.result()
+                except Exception as exc:
+                    logger.info('%d generated an exception.' % i, exc_info=1)
+                else:
+                    logger.info('Experiment %s completed: %s', i, r)
 
-    with concurrent.futures.ProcessPoolExecutor(n) as executor:
-        futures = {
-            executor.submit(run_slave, i, *run_args): i
-            for i in range(n)
-        }
-        results = {}
-        for future in concurrent.futures.as_completed(futures):
-            i = futures[future]
-            try:
-                results[i] = r = future.result()
-            except Exception as exc:
-                logger.info('%d generated an exception.' % i, exc_info=1)
-            else:
-                logger.info('Experiment %s completed: %s', i, r)
-
-    return results
+    return postprocess(results)
 
 
-def default_invoke_subcommands(ctx, processors, **config):
+def postprocess(results):
+    # TODO use a named array for summary
+    # Results (mean std 95%-conf): avgJ (0.123123 123123 123123), time (0.123123  123123 123123)
+    n = len(results)
+    try:
+        results = np.vstack(results[i] for i in range(n)) # preserve order
+        mean = results.mean(0)
+        std = results.std(0)
+        conf = 1.96 * std / np.sqrt(n)
+        summary = np.stack((mean, std, conf))
+    except Exception as e:
+        logger.error("error", exc_info=e)
+        summary = None
+    else:
+        logger.info("Summary of results of %d experiments:", n)
+        logger.info("|     mean: %s", mean)
+        logger.info("|      std: %s", std)
+        logger.info("| 95%% conf: %s", conf)
+
+    return (results, summary)
+
+
+def invoke_subcommands(ctx, processors, **config):
     config = {k: v for k, v in config.items() if v is not None}
     ctx.obj = e = Experiment(**config)
     e.log_config()
@@ -189,41 +213,35 @@ def default_invoke_subcommands(ctx, processors, **config):
     return (e, result)
 
 
-def default_run_slave(i):
-    # FIXME disabled return because returned object cannot be pickled
-    cli(standalone_mode=False, index=i)
+def run_slave(i, **kwargs):
+    exp, res = cli(standalone_mode=False, index=i, **kwargs)
+    return res.summary if isinstance(res, evaluation.Interaction) else None
 
 
 def hyperopt_run_master(expr, memo, ctrl):
     space = hyperopt.pyll.rec_eval(expr, memo=memo, print_node_on_error=False)
     tid = ctrl.current_trial['tid']
-    results = cli(standalone_mode=False, default_map=space, hyperopt_tid=tid,
-                  hyperopt_space=space)
     try:
-        score = np.fromiter(results.values(), float, count=len(results))
+        results, summary = cli(standalone_mode=False, default_map=space,
+                               hyperopt_tid=tid, hyperopt_space=space)
+    # For some reason click swaps KeyboardInterrupt for click.Abort so we have
+    # to catch it and re-raise it because it inherits from Exception.
+    except click.Abort:
+        raise
     except Exception as exc:
         logging.error("Error during trial", exc_info=exc)
         return {'status': hyperopt.STATUS_FAIL}
     else:
+        if summary is None or len(summary[0]) < 2: # XXX can this be detected earlier?
+            raise click.UsageError('Forgot to specify "evaluate" as last command?')
         res = {
-            'loss': -score.mean(),
-            'loss_variance': score.var(),
+            'loss': -summary[0][1],
+            'loss_variance': summary[1][1] ** 2,
             'status': hyperopt.STATUS_OK,
             # 'hash': name,
         }
         print('Trial %d completed: %s' % (tid, res))
         return res
-
-
-def hyperopt_run_slave(i, space, tid):
-    return cli(standalone_mode=False, index=i, hyperopt_space=space,
-               default_map=space, hyperopt_tid=tid)
-
-
-def hyperopt_invoke_subcommands(ctx, processors, **config):
-    (exp, res) = default_invoke_subcommands(ctx, processors, **config)
-    # FIXME with current setup this is returning avgJ instead of discountedJ
-    return exp.summary[1]
 
 
 @click.command('interact')
