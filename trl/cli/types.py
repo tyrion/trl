@@ -163,7 +163,10 @@ class Seed(Dataset):
     def convert_legacy(self, value, param, ctx):
         try:
             data = utils.load_dataset(value)
-            npy_seed, env_seed = data[ctx.meta['experiment.index'] or 0]
+            i = ctx.meta['experiment.index']
+            # We subtract one because experiment.index starts from one except
+            # in master process and single-process experiments.
+            npy_seed, env_seed = data[i-1 if i > 0 else i]
         except Exception:
             self.fail('Unable to load legacy seed from %r' % value)
         else:

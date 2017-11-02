@@ -36,6 +36,11 @@ LOGGING = {
         },
     },
     'loggers': {
+        'trl.cli': {
+            'level': 'INFO',
+            'handlers': ['console'],
+            'propagate': False,
+        },
         'trl': {
             'level': 'INFO',
             'propagate': False,
@@ -55,9 +60,19 @@ class MutedOption(click.Option):
 
 
 def configure_logging_output(ctx, param, value):
-    if value is not None and value != '-' and 'experiment.index' in ctx.meta:
-        LOGGING['handlers']['file']['filename'] = handle_index(ctx, value)
-        LOGGING['loggers']['trl']['handlers'] = ['file']
+    # Logging to stdout is the default
+    if value == '-':
+        return
+    # if --log-output is not specified
+    if value is None:
+        # mute logging in subprocesses
+        if ctx.meta['experiment.index']:
+            value = '/dev/null'
+        # log to stdout on single process experiment (or master process)
+        else:
+            return
+    LOGGING['handlers']['file']['filename'] = handle_index(ctx, value)
+    LOGGING['loggers']['trl']['handlers'] = ['file']
 
 
 def configure_logging(ctx, param, value):

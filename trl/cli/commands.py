@@ -18,7 +18,7 @@ logger = logging.getLogger('trl.cli')
 
 class Group(click.Group):
 
-    def make_context(self, info_name, args, parent=None, index=None,
+    def make_context(self, info_name, args, parent=None, index=0,
                      hyperopt_space=None, hyperopt_tid=None, **extra):
         if parent is None:
             parent = click.Context(self, info_name='')
@@ -27,7 +27,7 @@ class Group(click.Group):
             parent.meta['experiment.index'] = index
             # FIXME the or is a hack, loading files lazily is a solution
             parent.meta['format.opts'] = {
-                'i': index or 0,
+                'i': index,
                 't': hyperopt_tid or 0
             }
         return super().make_context(info_name, args, parent, **extra)
@@ -82,7 +82,7 @@ def configure_hyperopt(ctx, param, value):
     except (SystemExit, KeyboardInterrupt, click.Abort):
         print('Interrupt')
     except Exception as exc:
-        logging.error("Error during fmin", exc_info=exc)
+        logger.error("Error during fmin", exc_info=exc)
 
     print('Finished hyperopt')
 
@@ -148,24 +148,24 @@ def process_result(processors, n, **config):
         'hyperopt_tid': ctx.meta['hyperopt.tid']
     } if config['hyperopt'] else {}
 
-    # if we are in a subprocess an index has been set
-    if ctx.meta['experiment.index'] is not None:
+    # if we are in a subprocess the experiment index is nonzero
+    if ctx.meta['experiment.index']:
         return invoke_subcommands(ctx, processors, **config)
 
     results = {}
     # if we need to run just one experiment do not start the multiprocessing
     # machinery.
     if n < 2:
-        ctx.meta['experiment.index'] = 0
+        ctx.meta['experiment.index'] = 1
         # FIXME duplicated code from run_slave
         exp, res = invoke_subcommands(ctx, processors, **config)
-        results[0] = res.summary \
+        results[1] = res.summary \
                      if isinstance(res, evaluation.Interaction) else None
     else:
         with concurrent.futures.ProcessPoolExecutor(n) as executor:
             futures = {
                 executor.submit(run_slave, i, **run_kwargs): i
-                for i in range(n)
+                for i in range(1, n+1)
             }
             for future in concurrent.futures.as_completed(futures):
                 i = futures[future]
@@ -184,7 +184,7 @@ def postprocess(results):
     # Results (mean std 95%-conf): avgJ (0.123123 123123 123123), time (0.123123  123123 123123)
     n = len(results)
     try:
-        results = np.vstack(results[i] for i in range(n)) # preserve order
+        results = np.vstack(results[i] for i in range(1, n+1)) # preserve order
         mean = results.mean(0)
         std = results.std(0)
         conf = 1.96 * std / np.sqrt(n)
@@ -229,7 +229,7 @@ def hyperopt_run_master(expr, memo, ctrl):
     except click.Abort:
         raise
     except Exception as exc:
-        logging.error("Error during trial", exc_info=exc)
+        logger.error("Error during trial", exc_info=exc)
         return {'status': hyperopt.STATUS_FAIL}
     else:
         if summary is None or len(summary[0]) < 2: # XXX can this be detected earlier?
