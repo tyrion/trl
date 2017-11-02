@@ -81,6 +81,8 @@ def configure_hyperopt(ctx, param, value):
                         return_argmin=0, pass_expr_memo_ctrl=True)
     except (SystemExit, KeyboardInterrupt, click.Abort):
         print('Interrupt')
+    except click.ClickException as e:
+        e.show()
     except Exception as exc:
         logger.error("Error during fmin", exc_info=exc)
 
@@ -229,9 +231,11 @@ def hyperopt_run_master(expr, memo, ctrl):
     try:
         results, summary = cli(standalone_mode=False, default_map=space,
                                hyperopt_tid=tid, hyperopt_space=space)
-    # For some reason click swaps KeyboardInterrupt for click.Abort so we have
+    # We want to stop hyperopt when there is any click Exception, because they
+    # are due to misconfiguration and will happen in every trial. Also
+    # for some reason click swaps KeyboardInterrupt for click.Abort so we have
     # to catch it and re-raise it because it inherits from Exception.
-    except click.Abort:
+    except (click.Abort, click.ClickException):
         raise
     except Exception as exc:
         logger.error("Error during trial", exc_info=exc)
