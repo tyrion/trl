@@ -198,6 +198,11 @@ def postprocess(results):
         logger.info("|      std: %s", std)
         logger.info("| 95%% conf: %s", conf)
 
+        out = types.default_output()
+        if out is not None:
+            utils.save_dataset(results, out, 'postprocess/results')
+            utils.save_dataset(summary, out, 'postprocess/summary')
+
     return (results, summary)
 
 
