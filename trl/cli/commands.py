@@ -1,6 +1,7 @@
 import concurrent.futures
 import logging
 import pickle
+import pprint
 
 import click
 import hyperopt
@@ -66,34 +67,33 @@ def configure_hyperopt(ctx, param, value):
         trials_path = _meta['trials']
         with open(trials_path, 'rb') as fp:
             trials = pickle.load(fp)
-        print(len(trials))
     except KeyError:
         trials = None
     except Exception as exc:
         #logging.error('Error while loading trials', exc_info=exc)
         trials = hyperopt.Trials()
     else:
-        print('Loaded trials from', trials_path)
+        logger.info('Loaded %d trials from %s', len(trials), trials_path)
 
     try:
         hyperopt.fmin(hyperopt_run_master, space=value, max_evals=max_evals,
                         algo=hyperopt.tpe.suggest, verbose=2, trials=trials,
                         return_argmin=0, pass_expr_memo_ctrl=True)
     except (SystemExit, KeyboardInterrupt, click.Abort):
-        print('Interrupt')
+        logger.info('Interrupt')
     except click.ClickException as e:
-        e.show()
+        logger.error(e.format_message())
     except Exception as exc:
         logger.error("Error during fmin", exc_info=exc)
 
-    print('Finished hyperopt')
+    logger.info('Finished hyperopt')
 
     if trials is None or len(trials) < 1:
         ctx.exit()
 
     tt = trials._dynamic_trials[-1]
     if tt['result']['status'] not in (hyperopt.STATUS_OK, hyperopt.STATUS_FAIL):
-        print('discarding last trial')
+        logger.info('Discarding last trial')
         trials._ids.discard(tt['tid'])
         del trials._dynamic_trials[-1]
         trials.refresh()
@@ -101,8 +101,12 @@ def configure_hyperopt(ctx, param, value):
     if len(trials) < 1: # should count the successful statuses
         ctx.exit()
 
-    print(trials.argmin)
-    print(trials.best_trial['result'])
+    best = trials.best_trial
+    result = best['result']
+    logger.info("Best trial (tid: %d, loss: %f, loss_var: %f)", best['tid'],
+                result['loss'], result.get('loss_variance', 0))
+    space = hyperopt.space_eval(value, trials.argmin)
+    logger.info("Best trial space: \n%s", pprint.pformat(space))
 
     with open(trials_path, 'wb') as fp:
         pickle.dump(trials, fp)
@@ -228,6 +232,7 @@ def run_slave(i, **kwargs):
 def hyperopt_run_master(expr, memo, ctrl):
     space = hyperopt.pyll.rec_eval(expr, memo=memo, print_node_on_error=False)
     tid = ctrl.current_trial['tid']
+    logger.info("Starting trial %d", tid)
     try:
         results, summary = cli(standalone_mode=False, default_map=space,
                                hyperopt_tid=tid, hyperopt_space=space)
@@ -249,7 +254,7 @@ def hyperopt_run_master(expr, memo, ctrl):
             'status': hyperopt.STATUS_OK,
             # 'hash': name,
         }
-        print('Trial %d completed: %s' % (tid, res))
+        logger.info('Trial %d completed: %s' % (tid, res))
         return res
 
 
