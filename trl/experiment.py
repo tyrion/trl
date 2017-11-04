@@ -213,10 +213,14 @@ class Experiment:
 
             self.seed(stage_b)
             algo = algorithm_class(**algorithm_config)
+            time_a = time.perf_counter()
             algo.run(iterations)
+            training_time = time.perf_counter() - time_a
+            logger.info('Training finished in %f seconds.', training_time)
 
             if output:
-                regressor.save_regressor(algo.q, output, 'q')
+                attrs = {'training_time': training_time}
+                regressor.save_regressor(algo.q, output, 'q', attrs)
                 algo.save(output)
 
             self.algorithm = algo
