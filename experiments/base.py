@@ -3,6 +3,7 @@ import logging
 import logging.config
 import math
 
+import keras
 import numpy as np
 from theano import tensor as T
 from scipy.optimize import curve_fit
