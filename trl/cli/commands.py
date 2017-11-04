@@ -196,7 +196,7 @@ def postprocess(results):
         conf = 1.96 * std / np.sqrt(n)
         summary = np.stack((mean, std, conf))
     except Exception as e:
-        logger.error("error", exc_info=e)
+        logger.debug("Postprocess error", exc_info=e)
         summary = None
     else:
         logger.info("Summary of results of %d experiments:", n)
