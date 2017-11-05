@@ -7,7 +7,7 @@ import click
 import hyperopt
 import numpy as np
 
-from trl import evaluation, utils
+from trl import evaluation, floatX, utils
 from trl.cli import types
 from trl.cli.logging import LoggingOption, configure_logging, \
                             configure_logging_output
@@ -163,10 +163,7 @@ def process_result(processors, n, **config):
     # machinery.
     if n < 2:
         ctx.meta['experiment.index'] = 1
-        # FIXME duplicated code from run_slave
-        exp, res = invoke_subcommands(ctx, processors, **config)
-        results[1] = res.summary \
-                     if isinstance(res, evaluation.Interaction) else None
+        results = {1: invoke_subcommands(ctx, processors, **config)}
     else:
         with concurrent.futures.ProcessPoolExecutor(n) as executor:
             futures = {
@@ -189,27 +186,31 @@ def postprocess(results):
     # TODO use a named array for summary
     # Results (mean std 95%-conf): avgJ (0.123123 123123 123123), time (0.123123  123123 123123)
     n = len(results)
-    try:
-        results = np.vstack(results[i] for i in range(1, n+1)) # preserve order
-        mean = results.mean(0)
-        std = results.std(0)
-        conf = 1.96 * std / np.sqrt(n)
-        summary = np.stack((mean, std, conf))
-    except Exception as e:
-        logger.debug("Postprocess error", exc_info=e)
-        summary = None
-    else:
-        logger.info("Summary of results of %d experiments:", n)
-        logger.info("|     mean: %s", mean)
-        logger.info("|      std: %s", std)
-        logger.info("| 95%% conf: %s", conf)
+    metrics = list(results[1].keys())
+    data = np.zeros(n, {'names': metrics, 'formats': [floatX] * len(metrics)})
+    # NOTE: resulsts keys start from 1
+    for i, res in ((i, results[i+1]) for i in range(n)):
+        for (k, v) in res.items():
+            data[i][k] = v
 
-        out = types.default_output()
-        if out is not None:
-            utils.save_dataset(results, out, 'postprocess/results')
-            utils.save_dataset(summary, out, 'postprocess/summary')
+    summary = np.zeros(len(metrics), {
+        'names': ('metric', 'mean', 'std', 'conf'),
+        'formats': ('S20', floatX, floatX, floatX)
+    })
+    sqrt = np.sqrt(n)
+    logger.info('%20s |       mean |        std |   95%% conf' % 'metric')
+    for i, metric in enumerate(metrics):
+        values = data[metric]
+        std = values.std()
+        summary[i] = s = (metric, values.mean(), std, 1.96 * std / sqrt)
+        logger.info('{:>20s} | {:10.5g} | {:10.5g} | {:10.5g}'.format(*s))
 
-    return (results, summary)
+    out = types.default_output()
+    if out is not None:
+        utils.save_dataset(data, out, 'postprocess/results')
+        utils.save_dataset(summary, out, 'postprocess/summary')
+
+    return (data, summary)
 
 
 def invoke_subcommands(ctx, processors, **config):
@@ -217,25 +218,21 @@ def invoke_subcommands(ctx, processors, **config):
     ctx.obj = e = Experiment(**config)
     e.log_config()
 
-    result = None
     for processor in processors:
-        result = processor(e)
+        processor(e)
 
-    return (e, result)
-
+    return e.metrics
 
 def run_slave(i, **kwargs):
-    exp, res = cli(standalone_mode=False, index=i, **kwargs)
-    return res.summary if isinstance(res, evaluation.Interaction) else None
-
+    return cli(standalone_mode=False, index=i, **kwargs)
 
 def hyperopt_run_master(expr, memo, ctrl):
     space = hyperopt.pyll.rec_eval(expr, memo=memo, print_node_on_error=False)
     tid = ctrl.current_trial['tid']
     logger.info("Starting trial %d", tid)
     try:
-        results, summary = cli(standalone_mode=False, default_map=space,
-                               hyperopt_tid=tid, hyperopt_space=space)
+        _, res = cli(standalone_mode=False, default_map=space,
+                     hyperopt_tid=tid, hyperopt_space=space)
     # We want to stop hyperopt when there is any click Exception, because they
     # are due to misconfiguration and will happen in every trial. Also
     # for some reason click swaps KeyboardInterrupt for click.Abort so we have
@@ -246,16 +243,18 @@ def hyperopt_run_master(expr, memo, ctrl):
         logger.error("Error during trial", exc_info=exc)
         return {'status': hyperopt.STATUS_FAIL}
     else:
-        if summary is None or len(summary[0]) < 2: # XXX can this be detected earlier?
+        try:
+            score = res[res['metric'] == np.array('eval.score', 'S')][0]
+        except IndexError:
             raise click.UsageError('Forgot to specify "evaluate" as last command?')
-        res = {
-            'loss': -summary[0][1],
-            'loss_variance': summary[1][1] ** 2,
-            'status': hyperopt.STATUS_OK,
-            # 'hash': name,
-        }
-        logger.info('Trial %d completed: %s' % (tid, res))
-        return res
+        else:
+            res = {
+                'loss': -score['mean'],
+                'loss_variance': score['std'] ** 2,
+                'status': hyperopt.STATUS_OK,
+            }
+            logger.info('Trial %d completed: %s' % (tid, res))
+            return res
 
 
 @click.command('interact')

@@ -74,6 +74,7 @@ class Experiment:
         self.action_dim = utils.get_space_dim(self.env.action_space)
         self.gamma = self.get_gamma()
         self.horizon = self.get_horizon()
+        self.metrics = {}
 
         self.init_seed()
 
@@ -150,12 +151,10 @@ class Experiment:
             i.run()
 
             self.interaction = i
-
+            self.metrics['eval.time'] = i.summary[0]
             if metrics:
-                t = i.trace
-                s = np.concatenate((t.time.mean(keepdims=True), t.metrics.mean(0)))
-                self.summary = s
-                logger.info('Summary avg (time, *metrics): %s', s)
+                self.metrics['eval.score'] = i.summary[1]
+            self.summary = i.summary
 
             if output:
                 if collect:
@@ -223,6 +222,7 @@ class Experiment:
                 regressor.save_regressor(algo.q, output, 'q', attrs)
                 algo.save(output)
 
+            self.metrics['train.time'] = training_time
             self.algorithm = algo
             self.policy = evaluation.QPolicy(algo.q, self.actions)
 
