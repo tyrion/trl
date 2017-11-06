@@ -6,6 +6,9 @@ import click
 from .types import handle_index
 
 
+logging.addLevelName(logging.WARNING, 'WARN')
+logging.addLevelName(logging.CRITICAL, 'CRIT')
+
 LOGGING_LEVELS = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
 
 LOGGING = {
@@ -14,12 +17,22 @@ LOGGING = {
         'default': {
             'format': '%(asctime)s %(levelname)5s:%(name)s: %(message)s',
         },
+        'console': {
+            '()': 'colorlog.ColoredFormatter',
+            'format': '%(log_color)s%(levelname)5s| %(message)s',
+            'log_colors': {
+                'DEBUG': 'cyan',
+                'WARN': 'yellow',
+                'ERROR': 'red',
+                'CRIT': 'bold_red'
+            }
+        }
     },
     'handlers': {
         'console': {
             'class': 'logging.StreamHandler',
             'level': 'DEBUG',
-            'formatter': 'default',
+            'formatter': 'console',
             'stream': 'ext://sys.stdout',
         },
         'file': {
