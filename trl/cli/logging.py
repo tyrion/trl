@@ -62,7 +62,7 @@ LOGGING = {
     },
     'root': {
         'level': 'WARNING',
-        'handlers': ['others'],
+        'handlers': ['console'],
     },
 }
 
@@ -74,16 +74,8 @@ class MutedOption(click.Option):
 
 def configure_logging_output(ctx, param, value):
     # Logging to stdout is the default
-    if value == '-':
+    if value == '-' or value is None:
         return
-    # if --log-output is not specified
-    if value is None:
-        # mute logging in subprocesses
-        if ctx.meta['experiment.index']:
-            value = '/dev/null'
-        # log to stdout on single process experiment (or master process)
-        else:
-            return
     LOGGING['handlers']['file']['filename'] = handle_index(ctx, value)
     LOGGING['loggers']['trl']['handlers'] = ['file']
 

@@ -8,7 +8,7 @@ from trl import evaluation, regressor, utils
 
 
 def handle_index(ctx, value):
-    return value.format(**ctx.meta['format.opts'])
+    return value.format(**ctx.meta.get('format.opts', {}))
 
 
 class ParamType(click.ParamType):
@@ -17,10 +17,11 @@ class ParamType(click.ParamType):
         return not isinstance(value, str)
 
     def __call__(self, value, param, ctx):
-        if value == '.':
+        # XXX isinstance check to avoid dumb numpy warning.
+        if isinstance(value, str) and value == '.':
             value = ctx.lookup_default(param.name)
             if value is None:
-                self.fail('Not specified in config')
+                self.fail('Not specified in config', param)
 
         return value if self.is_correct_type(value) else \
                 super().__call__(value, param, ctx)
@@ -33,7 +34,7 @@ class EnvParamType(ParamType):
         try:
             return gym.spec(value)
         except gym.error.Error as exc:
-            raise click.BadParameter(str(exc))
+            self.fail(str(exc), param)
 
 
 class Loadable(ParamType):
@@ -47,7 +48,8 @@ class Loadable(ParamType):
         try:
             module = importlib.import_module(module_name)
             obj = getattr(module, obj_name)
-        except (AttributeError, ImportError):
+        # FIXME probably it would be wise to catch Exception here instead
+        except (AttributeError, ImportError) as err:
             self.fail('Failed to load %s' % path)
         return obj
 
@@ -189,11 +191,12 @@ class Path(ParamType):
         return handle_index(ctx, value)
 
 
-def set_default_output(ctx, param, value):
-    """Set the global default output file path"""
-    # XXX could use env var?
-    if value is not None:
-        ctx.meta['default.output'] = handle_index(ctx, value)
+#def set_default_output(ctx, param, value):
+#    """Set the global default output file path"""
+#    # XXX could use env var?
+#    if value is not None:
+#        ctx.meta['default.output'] = value = handle_index(ctx, value)
+#        return value
 
 
 def default_output():
