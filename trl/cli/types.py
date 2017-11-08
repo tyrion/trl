@@ -166,8 +166,7 @@ class Seed(Dataset):
         try:
             data = utils.load_dataset(value)
             i = ctx.meta['experiment.index']
-            # We subtract one because experiment.index starts from one except
-            # in master process and single-process experiments.
+            # We subtract one because experiment.index starts from one
             npy_seed, env_seed = data[i-1 if i > 0 else i]
         except Exception:
             self.fail('Unable to load legacy seed from %r' % value)
@@ -189,14 +188,6 @@ class Path(ParamType):
 
     def convert(self, value, param, ctx):
         return handle_index(ctx, value)
-
-
-#def set_default_output(ctx, param, value):
-#    """Set the global default output file path"""
-#    # XXX could use env var?
-#    if value is not None:
-#        ctx.meta['default.output'] = value = handle_index(ctx, value)
-#        return value
 
 
 def default_output():

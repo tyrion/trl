@@ -27,10 +27,6 @@ def configure_defaults(ctx, param, value):
     if not isinstance(value, dict):
         raise click.UsageError("must be a dict")
 
-    #if ctx.default_map is not None:
-    #    value = value.copy()
-    #    utils.rec_update(value, ctx.default_map)
-
     ctx.default_map = value
 
 
