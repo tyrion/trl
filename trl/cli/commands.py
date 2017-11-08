@@ -143,7 +143,6 @@ class Frontend(click.Command):
     def invoke(self, ctx):
         ctx_ = click.get_current_context()
         assert ctx_ is not None
-        configure_logging(ctx, None, None)
 
         hyperopt_space = ctx.params.pop('hyperopt')
         if hyperopt_space:

@@ -43,20 +43,21 @@ class Loadable(ParamType):
     def get_metavar(self, param):
         return 'PATH'
 
-    def load_obj(self, path):
+    def load_obj(self, path, param):
         module_name, obj_name = path.split(':', 1)
         try:
             module = importlib.import_module(module_name)
             obj = getattr(module, obj_name)
         # FIXME probably it would be wise to catch Exception here instead
-        except (AttributeError, ImportError) as err:
-            self.fail('Failed to load %s' % path)
+        except Exception as err:
+            args = (path, type(err).__name__)
+            self.fail('Failed to import %s (%s)' % args, param)
         return obj
 
     def convert(self, value, param, ctx):
         value = handle_index(ctx, value)
         if ':' in value:
-            return self.load_obj(value)
+            return self.load_obj(value, param)
 
         return self.convert_not_loadable(value, param, ctx)
 
@@ -69,10 +70,10 @@ class Callable(Loadable):
     def is_correct_type(self, value):
         return callable(value)
 
-    def load_obj(self, path):
-        obj = super().load_obj(path)
+    def load_obj(self, path, param):
+        obj = super().load_obj(path, param)
         if not self.is_correct_type(obj):
-            self.fail('Loaded object is not callable')
+            self.fail('Loaded object is not callable', param)
         return obj
 
 
@@ -85,7 +86,7 @@ class Dataset(Loadable):
         try:
             return utils.load_dataset(value, self.dataset_name)
         except OSError:
-            self.fail('Unable to read dataset from %s' % value)
+            self.fail('Unable to read dataset from %s' % value, param)
 
 
 class Regressor(Loadable):
@@ -101,20 +102,20 @@ class Regressor(Loadable):
 
         return super().convert(value, param, ctx)
 
-    def load_obj(self, path):
-        obj = super().load_obj(path)
+    def load_obj(self, path, param):
+        obj = super().load_obj(path, param)
         if isinstance(obj, dict):
             return self.convert_from_dict(value, param, ctx)
 
         if callable(obj):
             return obj
-        self.fail('Loaded object is not a dict or callable.')
+        self.fail('Loaded object is not a dict or callable.', param)
 
     def convert_not_loadable(self, value, param, ctx):
         try:
             regr = regressor.load_regressor(value, self.regressor_name)
         except OSError:
-            self.fail('Unable to load regressor from %s' % value)
+            self.fail('Unable to load regressor from %s' % value, param)
         else:
             return lambda *a, **kw: regr
 
@@ -156,7 +157,7 @@ class Seed(Dataset):
         try:
             data = utils.load_dataset(value, 'seed')
         except OSError:
-            self.fail('Unable to load seed from %r' % value)
+            self.fail('Unable to load seed from %r' % value, param)
         except KeyError:
             return self.convert_legacy(value, param, ctx)
         else:
@@ -169,7 +170,7 @@ class Seed(Dataset):
             # We subtract one because experiment.index starts from one
             npy_seed, env_seed = data[i-1 if i > 0 else i]
         except Exception:
-            self.fail('Unable to load legacy seed from %r' % value)
+            self.fail('Unable to load legacy seed from %r' % value, param)
         else:
             return npy_seed * 256 ** 8 + env_seed
 
@@ -199,7 +200,7 @@ def default_output():
 def policy(ctx, param, value):
     if value is not None:
         if ':' in value:
-            return CALLABLE.load_obj(value)
+            return CALLABLE.load_obj(value, param)
         try:
             regr = regressor.load_regressor(value, 'q')
         except OSError:
